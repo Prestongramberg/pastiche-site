@@ -1,0 +1,99 @@
+@import "tailwindcss";
+
+@theme {
+  /* Accent colors — Pastiche brand (matches the app icon gradient) */
+  --color-accent: #7c5cff;
+  --color-accent-light: #9d85ff;
+  --color-accent-glow: #7c5cff80;
+  --color-electric: #22d3ee;
+  --color-electric-glow: #22d3ee60;
+  --color-success: #10b981;
+  --color-gradient-start: #6d4df6;
+  --color-gradient-end: #22d3ee;
+
+  /* Surface colors — light mode defaults */
+  --color-midnight: #ffffff;
+  --color-dark: #f8fafc;
+  --color-darker: #f1f5f9;
+  --color-card: #ffffff;
+  --color-card-hover: #f8fafc;
+  --color-border: #e2e8f0;
+  --color-muted: #64748b;
+
+  /* Text */
+  --color-foreground: #0f172a;
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Dark theme overrides — unlayered for cascade priority over @theme */
+:root[data-theme="dark"] {
+  --color-midnight: #0a0a0f;
+  --color-dark: #111118;
+  --color-darker: #0d0d14;
+  --color-card: #16161f;
+  --color-card-hover: #1c1c28;
+  --color-border: #2a2a3a;
+  --color-muted: #6b7280;
+  --color-foreground: #ffffff;
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    scroll-padding-top: 5rem;
+    overflow-x: hidden;
+  }
+
+  body {
+    background-color: var(--color-midnight);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    overflow-x: hidden;
+    transition: background-color 0.3s, color 0.3s;
+  }
+
+  ::selection {
+    background-color: var(--color-accent);
+    color: white;
+  }
+}
+
+@layer utilities {
+  .text-gradient {
+    background: linear-gradient(135deg, var(--color-gradient-start), var(--color-gradient-end));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .bg-gradient {
+    background: linear-gradient(135deg, var(--color-gradient-start), var(--color-gradient-end));
+  }
+
+  .glow {
+    box-shadow: 0 0 40px var(--color-accent-glow), 0 0 80px var(--color-accent-glow);
+  }
+
+  .grid-bg {
+    background-image:
+      linear-gradient(rgba(124, 92, 255, 0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(124, 92, 255, 0.04) 1px, transparent 1px);
+    background-size: 60px 60px;
+  }
+
+  .kbd {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.9rem;
+    padding: 0.2rem 0.5rem;
+    border-radius: 0.4rem;
+    border: 1px solid var(--color-border);
+    background: var(--color-dark);
+    font-size: 0.8rem;
+    font-weight: 600;
+    font-family: var(--font-sans);
+    box-shadow: 0 2px 0 var(--color-border);
+  }
+}
