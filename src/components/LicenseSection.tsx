@@ -66,7 +66,14 @@ export default function LicenseSection() {
 
         {/* The document */}
         <figure className="mt-12 sm:mt-14">
-          <div className="overflow-hidden rounded-[3px] border border-rule bg-paper-raised">
+          <div className="relative overflow-hidden rounded-[3px] border border-rule bg-paper-raised">
+            {/* Inked stamp — same rubber-stamp language as the one-slot register. */}
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute right-4 top-10 z-10 -rotate-3 select-none rounded-[2px] border-2 border-accent/55 px-2.5 py-1 font-mono text-[11px] font-medium uppercase tracking-[0.18em] text-accent/70 sm:right-8 sm:top-14 sm:text-[12px]"
+            >
+              Free — MIT
+            </span>
             <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2 border-b border-rule px-5 py-3 sm:px-8">
               <p className={LABEL}>LICENSE</p>
               <p className={LABEL}>Reproduced in full</p>

@@ -205,3 +205,260 @@ body::after {
     scroll-behavior: auto !important;
   }
 }
+
+/* ============================================================================
+   KEYFRAMES — the specimen overture (appended; nothing above this line changed)
+
+   The masthead's opening act is pure CSS so it runs on the first frame with no
+   JavaScript on the critical path: the wordmark presses into the paper glyph by
+   glyph, the hairlines are ruled from the left, the registration ticks draw
+   themselves, and the definition's guide-blue underline is inked last.
+
+   Vocabulary is deliberately narrow — transform, opacity, clip-path and
+   stroke-dashoffset only; one curve (--ease-shelf) throughout.
+
+   Prefix: `ink-`. Every one of these classes is written so that the RESTING
+   state (no animation applied) is the FINAL state. That is what makes the
+   reduced-motion block at the bottom a one-liner: switching the animation off
+   leaves correct, fully-visible, un-transformed content.
+
+   Timeline of the overture, in ms from first paint:
+     0    over-line row fades in
+     0    letterpress begins (8 glyphs x 55ms stagger, 500ms each -> 885ms)
+     100  masthead over-line hairline rules in
+     380  definition block fades in + its hairline rules in
+     560  "pas·tiche" guide underline draws
+     710  "(n.)" is inked
+     900  ink spread (glyphs tighten to their final tracking)
+     900  top-left registration tick draws
+     990  bottom-right registration tick draws
+   ========================================================================= */
+
+/* --- Letterpress ----------------------------------------------------------
+   Two nested boxes per glyph. The outer (.ink-letter) owns the post-settle ink
+   spread; the inner (.ink-glyph) owns the press. They are split because a
+   single element cannot run two animations against `transform`.
+
+   The ink spread is the tracking easing from -0.025em to the specimen's final
+   -0.03em, expressed as a cumulative per-glyph translateX rather than an
+   animated `letter-spacing` — same picture, but it stays on the compositor and
+   contributes exactly zero to CLS. The h1 keeps letter-spacing: -0.03em at
+   rest, so the resting typography is the design's, not the animation's.
+   `--i` (glyph index) arrives inline from the server-rendered markup.        */
+.ink-word {
+  --ink-step: 55ms;
+  --ink-press: 500ms;
+  --ink-drop: clamp(6px, 0.07em, 14px);
+  --ink-spread: 0.005em;
+  white-space: nowrap;
+}
+
+.ink-letter {
+  display: inline-block;
+  animation: ink-spread 400ms var(--ease-shelf) 900ms both;
+}
+
+.ink-glyph {
+  display: inline-block;
+  transform-origin: 50% 88%;
+  animation: ink-press var(--ink-press) var(--ease-shelf)
+    calc(var(--i, 0) * var(--ink-step)) both;
+}
+
+/* Never opacity 0 — the wordmark is the LCP element and must paint on frame 1. */
+@keyframes ink-press {
+  0% {
+    opacity: 0.35;
+    transform: translate3d(0, var(--ink-drop), 0) scale(1);
+  }
+  64% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1.012);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes ink-spread {
+  from {
+    transform: translate3d(calc(var(--i, 0) * var(--ink-spread)), 0, 0);
+  }
+  to {
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+/* --- Ruled hairlines ------------------------------------------------------
+   The element keeps its 1px transparent border so box metrics are untouched;
+   the visible rule is a pseudo-element scaled from the left edge.            */
+.ink-rule {
+  position: relative;
+}
+
+.ink-rule::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background-color: var(--color-rule);
+  transform-origin: left center;
+  animation: ink-draw-rule 500ms var(--ease-shelf) 100ms both;
+}
+
+.ink-rule-b::after {
+  bottom: -1px;
+}
+
+.ink-rule-t::after {
+  top: -1px;
+}
+
+/* The rule under the definition entry waits for the word to be most of the way down. */
+.ink-rule-late::after {
+  animation-delay: 380ms;
+}
+
+@keyframes ink-draw-rule {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+/* --- Registration ticks ---------------------------------------------------
+   `pathLength="1"` on the path normalises the dash unit, so one dash of 1
+   covers the whole stroke and the offset runs 1 -> 0 regardless of geometry.  */
+.ink-tick {
+  position: absolute;
+  width: 0.875rem;
+  height: 0.875rem;
+  overflow: visible;
+  fill: none;
+  stroke: var(--color-guide);
+  stroke-width: 1;
+  opacity: 0.85;
+}
+
+.ink-tick path {
+  stroke-dasharray: 1;
+  animation: ink-draw-tick 300ms var(--ease-shelf) 900ms both;
+}
+
+.ink-tick-tl {
+  top: -0.625rem;
+  left: -0.375rem;
+}
+
+.ink-tick-br {
+  right: -0.375rem;
+  bottom: -0.625rem;
+}
+
+.ink-tick-br path {
+  animation-delay: 990ms;
+}
+
+@keyframes ink-draw-tick {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* --- The definition entry -------------------------------------------------
+   A ruled guide-blue underline rather than text-decoration, so it can be drawn.
+   `bottom` reproduces the previous underline-offset; the box is inline-block so
+   the pseudo-element has a tight, single-line box to sit under.              */
+.ink-underline {
+  position: relative;
+  display: inline-block;
+}
+
+.ink-underline::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -0.08em;
+  height: 1.5px;
+  background-color: var(--color-guide);
+  transform-origin: left center;
+  animation: ink-draw-rule 500ms var(--ease-shelf) 560ms both;
+}
+
+/* The part-of-speech is inked 150ms after the underline starts. Space for it is
+   reserved by the surrounding text, so this is opacity only — nothing shifts. */
+.ink-pos {
+  animation: ink-ink-in 260ms var(--ease-shelf) 710ms both;
+}
+
+@keyframes ink-ink-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* --- The selection teacher ------------------------------------------------
+   A rehearsal of the page's one instruction: an accent highlight wipes across
+   the sentence (600ms) and retreats, exactly as a real selection would look.
+   The overlay is an aria-hidden duplicate of the sentence, absolutely fitted to
+   the same box so the two wrap identically; it is mounted only for the length
+   of one sweep, which is also how `will-change` gets cleaned up.
+   Driven by <SelectionTeacher>, which stops it forever once the visitor copies. */
+.ink-sweep-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  user-select: none;
+  background-color: var(--color-accent);
+  color: var(--color-paper);
+  will-change: clip-path;
+}
+
+.ink-sweep {
+  animation: ink-sweep 1200ms var(--ease-shelf) both;
+}
+
+@keyframes ink-sweep {
+  0% {
+    clip-path: inset(0% 100% 0% 0%);
+  }
+  50% {
+    clip-path: inset(0% 0% 0% 0%);
+  }
+  66% {
+    clip-path: inset(0% 0% 0% 0%);
+  }
+  100% {
+    clip-path: inset(0% 0% 0% 100%);
+  }
+}
+
+/* --- Reduced motion -------------------------------------------------------
+   Switching these animations off lands every element on its resting state,
+   which is already the final one: full opacity, no transform, rules and ticks
+   drawn. The teacher's sweep has no meaningful still frame, so it never mounts. */
+@media (prefers-reduced-motion: reduce) {
+  .ink-letter,
+  .ink-glyph,
+  .ink-rule::after,
+  .ink-tick path,
+  .ink-underline::after,
+  .ink-pos {
+    animation: none !important;
+  }
+
+  .ink-sweep-layer {
+    display: none !important;
+  }
+}

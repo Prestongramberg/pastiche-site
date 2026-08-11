@@ -4,23 +4,28 @@
  * FIG. 02 — The clippings.
  *
  * The one scroll-pinned scene on the specimen. Six large clipping cards are printed
- * on paper (not the dark app UI — these are specimen plates OF the UI) and stacked in
- * a single sticky column: as you scroll, each sheet settles into the plate area and the
- * one before it peels back. Only `transform` and `opacity` are animated, so the whole
- * scene stays on the compositor.
+ * on paper (not the dark app UI — these are specimen plates OF the UI) and PASTED DOWN
+ * one at a time: each sheet arrives a degree or two off square with a lifted shadow
+ * under it, then settles flat as the shadow contracts to a hairline, and its margin
+ * annotation is ruled in left-to-right behind a clip-path. Everything is driven off a
+ * single scroll progress value through springs, so scrubbing has weight and the whole
+ * scene stays on the compositor (transform / opacity / clip-path only).
  *
  * Accessibility: every sheet stays in the DOM and in the tab order. Focusing a control
  * inside an off-stage sheet scrolls that sheet onto the plate (see `goTo`), and the
  * plate index at the top doubles as a set of jump buttons. Under
- * `prefers-reduced-motion` the utility `motion-reduce:transform-none!` neutralises the
- * inline transforms framer writes, leaving a plain cross-fade — never invisible content.
+ * `prefers-reduced-motion` the sheets carry opacity only — no rotation, no travel, no
+ * wipe — and the belt-and-braces `motion-reduce:transform-none!` utility outranks any
+ * transform framer might still write. Never invisible content.
  */
 
 import { useCallback, useRef, useState, type ReactNode } from "react";
 import {
   motion,
   useMotionValueEvent,
+  useReducedMotion,
   useScroll,
+  useSpring,
   useTransform,
   type MotionValue,
 } from "framer-motion";
@@ -29,7 +34,49 @@ import CopyChip from "./CopyChip";
 const LABEL = "font-mono text-[11px] uppercase tracking-[0.12em] text-ink-muted";
 const CARD_COUNT = 6;
 /** Viewport heights of scroll travel per card. Runway = 100svh + (n - 1) × STEP. */
-const STEP_VH = 80;
+const STEP_VH = 88;
+
+/** The one spring for physical elements in this scene. */
+const SPECIMEN_SPRING = { type: "spring", stiffness: 340, damping: 30, mass: 0.9 } as const;
+
+/**
+ * The scene runs on a "sheet index" `t` rather than raw progress. It starts slightly
+ * below zero so the FIRST sheet also gets pasted down instead of arriving pre-flat.
+ */
+const T_START = -0.35;
+const T_END = CARD_COUNT - 1;
+const T_SPAN = T_END - T_START;
+
+/** Arrival angles, alternating hand, 1.5–2.5°. A pasted sheet never rotates again. */
+const ENTER_ROTATION = [-2.1, 1.7, -2.4, 1.9, -1.6, 2.3];
+
+/**
+ * Two shadow plates cross-fade under each sheet: `lift` while it is still in the air,
+ * `flat` once it is down. Cross-fading opacity keeps this on the compositor, which
+ * animating `box-shadow` itself would not. The shadow ink is warm paper-shadow on the
+ * paper edition and true black on the ink edition — a light shadow in the dark theme
+ * would read as a glow.
+ */
+const STAGE_STYLES = `
+.cl-stage {
+  --cl-shadow: color-mix(in srgb, var(--color-ink) 26%, transparent);
+  --cl-shadow-soft: color-mix(in srgb, var(--color-ink) 14%, transparent);
+}
+:root[data-theme="dark"] .cl-stage {
+  --cl-shadow: color-mix(in srgb, black 68%, transparent);
+  --cl-shadow-soft: color-mix(in srgb, black 42%, transparent);
+}
+.cl-shadow-lift {
+  box-shadow:
+    0 30px 50px -22px var(--cl-shadow),
+    0 12px 20px -12px var(--cl-shadow-soft);
+}
+.cl-shadow-flat {
+  box-shadow:
+    0 2px 3px -2px var(--cl-shadow),
+    0 1px 0 0 var(--cl-shadow-soft);
+}
+`;
 
 /* ------------------------------------------------------------------ card ---- */
 
@@ -337,24 +384,58 @@ function Sheet({
   i,
   t,
   isActive,
+  reduced,
   onRequestFocusScroll,
 }: {
   item: Clipping;
   i: number;
   t: MotionValue<number>;
   isActive: boolean;
+  reduced: boolean;
   onRequestFocusScroll: (index: number) => void;
 }) {
-  const opacity = useTransform(t, [i - 1, i - 0.45, i, i + 0.5, i + 1], [0, 0.2, 1, 0.22, 0]);
-  const y = useTransform(t, [i - 1, i, i + 1], [64, 0, -40]);
-  const scale = useTransform(t, [i - 1, i, i + 1], [0.96, 1, 0.94]);
-  const rotate = useTransform(t, [i - 1, i, i + 1], [0.7, 0, -1]);
+  // The first sheet is already on the plate when the scene pins, so it fades in over a
+  // shorter run than the ones that fly in from below — it only has to be pasted down.
+  const first = i === 0;
+  const opacity = useTransform(
+    t,
+    first ? [i - 0.6, i - 0.35, i, i + 0.5, i + 1] : [i - 1, i - 0.45, i, i + 0.5, i + 1],
+    first ? [0.5, 1, 1, 0.22, 0] : [0, 0.2, 1, 0.22, 0],
+  );
+  const scale = useTransform(t, [i - 1, i, i + 1], [0.965, 1, 0.945]);
+  const yTarget = useTransform(t, [i - 1, i, i + 1], [58, 0, -40]);
+  // Rotation only ever resolves toward flat, and never comes back: once a sheet is
+  // pasted it stays pasted, however hard the visitor scrubs.
+  const rotateTarget = useTransform(
+    t,
+    [i - 0.6, i - 0.05, i + 1],
+    [ENTER_ROTATION[i % ENTER_ROTATION.length], 0, 0],
+  );
+  // The spring is what makes the scrub feel like paper rather than a slider.
+  const y = useSpring(yTarget, SPECIMEN_SPRING);
+  const rotate = useSpring(rotateTarget, SPECIMEN_SPRING);
 
-  // `motion-reduce:transform-none!` outranks framer's inline transform, so a visitor who
-  // asks for reduced motion gets a plain cross-fade instead of the peel.
+  // Shadow contracts from lifted to hairline as the sheet touches the plate.
+  const lift = useTransform(t, [i - 0.6, i - 0.3, i - 0.02], [1, 0.9, 0]);
+  const flat = useTransform(t, [i - 0.32, i - 0.02], [0, 1]);
+
+  // Margin annotation, ruled in left to right. Two ranges so the claim leads and the
+  // note follows — a clip-path wipe, never per-character JS.
+  const claimWipe = useTransform(t, [i - 0.5, i - 0.08], [100, 0]);
+  const noteWipe = useTransform(t, [i - 0.42, i + 0.04], [100, 0]);
+  const claimClip = useTransform(claimWipe, (v) => `inset(0 ${v.toFixed(2)}% 0 0)`);
+  const noteClip = useTransform(noteWipe, (v) => `inset(0 ${v.toFixed(2)}% 0 0)`);
+
+  // Reduced motion: opacity carries the whole scene. No travel, no rotation, no wipe.
+  // `motion-reduce:transform-none!` outranks anything framer might still write inline.
   return (
     <motion.div
-      style={{ opacity, y, scale, rotate, zIndex: i, pointerEvents: isActive ? "auto" : "none" }}
+      style={{
+        opacity,
+        zIndex: i,
+        pointerEvents: isActive ? "auto" : "none",
+        ...(reduced ? {} : { y, scale, rotate }),
+      }}
       onFocusCapture={() => {
         if (!isActive) onRequestFocusScroll(i);
       }}
@@ -365,29 +446,46 @@ function Sheet({
         <div className="flex gap-4 sm:gap-6">
           <p className={`${LABEL} w-9 shrink-0 pt-1 tabular-nums`}>{item.n}</p>
           <div className="min-w-0">
-            <h3 className="font-serif text-[clamp(1.5rem,3.4vw,2.35rem)] font-normal leading-[1.12] tracking-[-0.02em] text-ink">
-              {item.claim}
-            </h3>
-            <p className="mt-3 max-w-[46ch] text-[15px] leading-[1.6] text-ink/75 sm:text-[16px]">
-              {item.note}
-            </p>
+            {/* `-m-1 p-1` gives the clip box room for descenders without moving a pixel. */}
+            <motion.div className="-m-1 p-1" style={reduced ? undefined : { clipPath: claimClip }}>
+              <h3 className="font-serif text-[clamp(1.5rem,3.4vw,2.35rem)] font-normal leading-[1.12] tracking-[-0.02em] text-ink">
+                {item.claim}
+              </h3>
+            </motion.div>
+            <motion.div className="-m-1 p-1" style={reduced ? undefined : { clipPath: noteClip }}>
+              <p className="mt-3 max-w-[46ch] text-[15px] leading-[1.6] text-ink/75 sm:text-[16px]">
+                {item.note}
+              </p>
+            </motion.div>
             {item.chips ? (
               <div className="mt-4 flex flex-wrap items-center gap-2">{item.chips}</div>
             ) : null}
           </div>
         </div>
 
-        {/* The plate */}
-        <SpecimenCard
-          kind={item.kind}
-          timeAgo={item.timeAgo}
-          meta={item.meta}
-          index={item.index}
-          keyClassName={item.keyClassName}
-          caption={item.alt}
-        >
-          {item.body}
-        </SpecimenCard>
+        {/* The plate, on its two cross-fading shadows */}
+        <div className="relative mx-auto w-full max-w-[30rem] lg:mx-0">
+          <motion.span
+            aria-hidden="true"
+            className="cl-shadow-lift pointer-events-none absolute inset-[3px] -z-10 rounded-[3px]"
+            style={{ opacity: reduced ? 0 : lift }}
+          />
+          <motion.span
+            aria-hidden="true"
+            className="cl-shadow-flat pointer-events-none absolute inset-[3px] -z-10 rounded-[3px]"
+            style={{ opacity: reduced ? 1 : flat }}
+          />
+          <SpecimenCard
+            kind={item.kind}
+            timeAgo={item.timeAgo}
+            meta={item.meta}
+            index={item.index}
+            keyClassName={item.keyClassName}
+            caption={item.alt}
+          >
+            {item.body}
+          </SpecimenCard>
+        </div>
       </div>
     </motion.div>
   );
@@ -399,15 +497,16 @@ export default function Clippings() {
   const runwayRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const [active, setActive] = useState(0);
+  const reduced = useReducedMotion() ?? false;
 
   const { scrollYProgress } = useScroll({
     target: runwayRef,
     offset: ["start start", "end end"],
   });
-  const t = useTransform(scrollYProgress, [0, 1], [0, CARD_COUNT - 1]);
+  const t = useTransform(scrollYProgress, [0, 1], [T_START, T_END]);
 
   useMotionValueEvent(scrollYProgress, "change", (v) => {
-    const next = Math.min(CARD_COUNT - 1, Math.max(0, Math.round(v * (CARD_COUNT - 1))));
+    const next = Math.min(T_END, Math.max(0, Math.round(T_START + v * T_SPAN)));
     setActive((prev) => (prev === next ? prev : next));
   });
 
@@ -419,7 +518,7 @@ export default function Clippings() {
     if (travel <= 0) return;
     const top = runway.getBoundingClientRect().top + window.scrollY;
     window.scrollTo({
-      top: Math.round(top + (travel * index) / (CARD_COUNT - 1)),
+      top: Math.round(top + travel * ((index - T_START) / T_SPAN)),
       behavior: "auto",
     });
   }, []);
@@ -430,6 +529,10 @@ export default function Clippings() {
       aria-labelledby="clippings-title"
       className="relative scroll-mt-8 border-t border-rule"
     >
+      <style href="clippings-scene" precedence="medium">
+        {STAGE_STYLES}
+      </style>
+
       <div className="mx-auto w-full max-w-6xl px-5 pt-20 sm:px-8 sm:pt-28 lg:pt-32">
         <p className={LABEL}>FIG. 02 — The clippings</p>
         <h2
@@ -455,7 +558,7 @@ export default function Clippings() {
       >
         <div
           ref={stageRef}
-          className="sticky top-0 flex h-[100svh] flex-col px-5 pb-24 pt-6 sm:px-8 sm:pb-28"
+          className="cl-stage sticky top-0 flex h-[100svh] flex-col px-5 pb-24 pt-6 sm:px-8 sm:pb-28"
         >
           {/* Running head + plate index */}
           <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 border-b border-rule pb-3">
@@ -495,6 +598,7 @@ export default function Clippings() {
                 i={i}
                 t={t}
                 isActive={i === active}
+                reduced={reduced}
                 onRequestFocusScroll={goTo}
               />
             ))}

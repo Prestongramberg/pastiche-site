@@ -1,3 +1,5 @@
+"use client";
+
 /**
  * FIG. 03 — The keyboard.
  *
@@ -5,17 +7,144 @@
  * dotted leaders running from the action to the combo, and every combo a real <kbd>
  * cluster wrapped in a CopyChip so it can be lifted straight onto the shelf.
  *
- * No hooks, no state — this renders as a server component when the page is a server
- * component, and is equally safe if a client parent pulls it in.
+ * Motion: the tables are RULED, not faded. When a table enters the viewport each row's
+ * bottom hairline is drawn left-to-right (scaleX, 40ms apart), the dotted leader fades in
+ * behind its own rule, and the key cluster settles down four pixels on the specimen
+ * spring. Once per mount — `viewport={{ once: true }}` — because a rule that redraws
+ * every time you scroll past it is a gimmick, not a specimen.
+ *
+ * Text never animates: every term, value and key cap is at full opacity in the server
+ * HTML and stays there. Only decoration (rules, leaders) and a four-pixel settle move,
+ * so a visitor with JS disabled loses nothing but the drawing.
+ *
+ * This is a client component solely for that choreography; it holds no state and takes
+ * no props.
  */
 
-import type { ReactNode } from "react";
+import { useRef, type ReactNode, type RefObject } from "react";
 import Link from "next/link";
+import {
+  motion,
+  useReducedMotion,
+  useScroll,
+  useTransform,
+  type Variants,
+} from "framer-motion";
 import CopyChip from "./CopyChip";
 
 const LABEL = "font-mono text-[11px] uppercase tracking-[0.12em] text-ink-muted";
 const FOCUS =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-paper";
+
+/** The page curve. */
+const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
+/** The one spring for physical elements in this section. */
+const SPECIMEN_SPRING = { type: "spring", stiffness: 340, damping: 30, mass: 0.9 } as const;
+
+/* ---------------------------------------------------------------- variants ---- */
+
+const table = (reduced: boolean): Variants => ({
+  hidden: {},
+  shown: { transition: { staggerChildren: reduced ? 0 : 0.04 } },
+});
+
+/** Rows carry nothing themselves — they exist to hand the label to their parts. */
+const ROW: Variants = { hidden: {}, shown: {} };
+
+const rule = (reduced: boolean): Variants => ({
+  hidden: { scaleX: reduced ? 1 : 0, opacity: reduced ? 0 : 1 },
+  shown: {
+    scaleX: 1,
+    opacity: 1,
+    transition: { duration: reduced ? 0.2 : 0.42, ease: EASE },
+  },
+});
+
+/**
+ * The leader waits for its own rule before fading in. That wait is expressed as a
+ * keyframe hold rather than a `delay`, deliberately: a `delay` in a child's variant
+ * REPLACES the stagger offset framer hands down from the table, which would fire every
+ * leader at once. Keyframes leave the inherited offset intact.
+ */
+const leader = (reduced: boolean): Variants => ({
+  hidden: { opacity: 0 },
+  shown: {
+    opacity: reduced ? 1 : [0, 0, 1],
+    transition: reduced
+      ? { duration: 0.2, ease: EASE }
+      : { duration: 0.52, times: [0, 0.45, 1], ease: EASE },
+  },
+});
+
+/** Same rule about `delay` applies here — the spring runs on the inherited offset. */
+const cluster = (reduced: boolean): Variants => ({
+  hidden: { y: reduced ? 0 : 4 },
+  shown: {
+    y: 0,
+    transition: reduced ? { duration: 0 } : SPECIMEN_SPRING,
+  },
+});
+
+/* -------------------------------------------------------------- primitives ---- */
+
+/** A `<dl>` that rules its rows in, once, when it comes into view. */
+function Table({ children, className }: { children: ReactNode; className?: string }) {
+  const reduced = useReducedMotion() ?? false;
+  return (
+    <motion.dl
+      className={className}
+      variants={table(reduced)}
+      initial="hidden"
+      whileInView="shown"
+      viewport={{ once: true, amount: 0.2 }}
+    >
+      {children}
+    </motion.dl>
+  );
+}
+
+/**
+ * One ruled row. The resting hairline stays in the markup at a quarter strength so a
+ * table without JS still reads as a table; the animated rule is drawn on top of it.
+ */
+function RuledRow({ children, className }: { children: ReactNode; className?: string }) {
+  const reduced = useReducedMotion() ?? false;
+  return (
+    <motion.div
+      variants={ROW}
+      className={`group relative border-b border-rule/25 last:border-b-0 ${className ?? ""}`}
+    >
+      {children}
+      <motion.span
+        aria-hidden="true"
+        variants={rule(reduced)}
+        className="absolute inset-x-0 -bottom-px h-px origin-left bg-rule/70 group-last:hidden"
+      />
+    </motion.div>
+  );
+}
+
+/** The dotted leader between term and value — fades in behind its own rule. */
+function Leader() {
+  const reduced = useReducedMotion() ?? false;
+  return (
+    <motion.span
+      aria-hidden="true"
+      variants={leader(reduced)}
+      className="hidden min-w-8 flex-1 border-b border-dotted border-rule sm:block"
+    />
+  );
+}
+
+/** The value cell: settles four pixels onto the rule. */
+function Value({ children, className }: { children: ReactNode; className?: string }) {
+  const reduced = useReducedMotion() ?? false;
+  return (
+    <motion.dd variants={cluster(reduced)} className={className}>
+      {children}
+    </motion.dd>
+  );
+}
 
 /** A copyable key cluster: real <kbd> semantics inside the copy chip. */
 function Combo({ keys, text }: { keys: string[]; text?: string }) {
@@ -39,7 +168,7 @@ function Combo({ keys, text }: { keys: string[]; text?: string }) {
 /** One table row: term, dotted leader, value. */
 function Row({ action, note, children }: { action: string; note?: string; children: ReactNode }) {
   return (
-    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-2 border-b border-rule/70 py-3.5 last:border-b-0">
+    <RuledRow className="flex flex-wrap items-baseline gap-x-3 gap-y-2 py-3.5">
       <dt className="min-w-0 shrink-0 text-[15.5px] leading-snug text-ink sm:text-[16.5px]">
         {action}
         {note ? (
@@ -48,12 +177,26 @@ function Row({ action, note, children }: { action: string; note?: string; childr
           </span>
         ) : null}
       </dt>
-      <span
-        aria-hidden="true"
-        className="hidden min-w-8 flex-1 border-b border-dotted border-rule sm:block"
-      />
-      <dd className="ml-auto flex shrink-0 flex-wrap items-center gap-1.5 sm:ml-0">{children}</dd>
-    </div>
+      <Leader />
+      <Value className="ml-auto flex shrink-0 flex-wrap items-center gap-1.5 sm:ml-0">
+        {children}
+      </Value>
+    </RuledRow>
+  );
+}
+
+/** The rule under a group heading, ruled in the same direction as the rows below it. */
+function GroupRule() {
+  const reduced = useReducedMotion() ?? false;
+  return (
+    <motion.span
+      aria-hidden="true"
+      className="absolute inset-x-0 -bottom-px h-px origin-left bg-ink/25"
+      initial={reduced ? { opacity: 0 } : { scaleX: 0 }}
+      whileInView={reduced ? { opacity: 1 } : { scaleX: 1 }}
+      viewport={{ once: true, amount: 0.6 }}
+      transition={{ duration: reduced ? 0.2 : 0.55, ease: EASE }}
+    />
   );
 }
 
@@ -68,16 +211,45 @@ function Group({
 }) {
   return (
     <section className="mt-14 first:mt-0 sm:mt-16">
-      <div className="flex items-baseline gap-4 border-b border-ink/25 pb-2.5">
+      <div className="relative flex items-baseline gap-4 border-b border-ink/[0.08] pb-2.5">
         <span className={`${LABEL} tabular-nums`}>{number}</span>
         <h3 className="font-serif text-[clamp(1.35rem,2.6vw,1.85rem)] font-normal leading-tight tracking-[-0.015em] text-ink">
           {title}
         </h3>
+        <GroupRule />
       </div>
       {children}
     </section>
   );
 }
+
+/**
+ * Marginalia: the figure number set enormous and nearly invisible in the outer margin,
+ * drifting a whisper against the scroll. Wide screens only, decoration only.
+ */
+function Marginalia({
+  figure,
+  target,
+}: {
+  figure: string;
+  target: RefObject<HTMLElement | null>;
+}) {
+  const reduced = useReducedMotion() ?? false;
+  const { scrollYProgress } = useScroll({ target, offset: ["start end", "end start"] });
+  const y = useTransform(scrollYProgress, [0, 1], [-20, 20]);
+
+  return (
+    <motion.span
+      aria-hidden="true"
+      style={reduced ? undefined : { y }}
+      className="pointer-events-none absolute -right-24 top-24 -z-10 hidden select-none font-serif text-[150px] italic leading-none text-ink/[0.045] xl:block 2xl:-right-40 2xl:text-[180px]"
+    >
+      {figure}
+    </motion.span>
+  );
+}
+
+/* ------------------------------------------------------------------ data ---- */
 
 const TOKENS: { token: string; matches: string }[] = [
   { token: "type:text", matches: "Text and rich text clippings" },
@@ -95,14 +267,21 @@ const EXAMPLES: { query: string; reads: string }[] = [
   { query: "wrld", reads: "Fuzzy — matches world, worldwide, hello-world." },
 ];
 
+/* --------------------------------------------------------------- section ---- */
+
 export default function KeyboardSpecimen() {
+  const sectionRef = useRef<HTMLElement | null>(null);
+
   return (
     <section
+      ref={sectionRef}
       id="keyboard"
       aria-labelledby="keyboard-title"
       className="relative scroll-mt-8 border-t border-rule px-5 sm:px-8"
     >
-      <div className="mx-auto w-full max-w-5xl py-20 sm:py-28 lg:py-32">
+      <div className="relative mx-auto w-full max-w-5xl py-20 sm:py-28 lg:py-32">
+        <Marginalia figure="03" target={sectionRef} />
+
         <header className="flex flex-wrap items-baseline justify-between gap-x-8 gap-y-3">
           <p className={LABEL}>FIG. 03 — The keyboard</p>
           <p className={`${LABEL} tabular-nums`}>3 groups · 18 combinations</p>
@@ -122,7 +301,7 @@ export default function KeyboardSpecimen() {
 
         <div className="mt-14 sm:mt-16">
           <Group number="3.1" title="The shelf">
-            <dl>
+            <Table>
               <Row action="Open or close the shelf, from any app" note="global">
                 <Combo keys={["⇧", "⌘", "V"]} />
               </Row>
@@ -132,7 +311,7 @@ export default function KeyboardSpecimen() {
               <Row action="Close the preview, then the search, then the shelf">
                 <Combo keys={["Esc"]} />
               </Row>
-            </dl>
+            </Table>
             <p className="mt-4 text-[14.5px] leading-[1.6] text-ink-muted">
               ⇧⌘V is the default and can be rebound in Settings → General. The shelf opens on
               whichever display the pointer is on.
@@ -140,7 +319,7 @@ export default function KeyboardSpecimen() {
           </Group>
 
           <Group number="3.2" title="Selection & paste">
-            <dl>
+            <Table>
               <Row action="Move the selection">
                 <Combo keys={["←"]} />
                 <Combo keys={["→"]} />
@@ -164,18 +343,18 @@ export default function KeyboardSpecimen() {
               <Row action="Delete the selected clipping">
                 <Combo keys={["Delete"]} />
               </Row>
-            </dl>
+            </Table>
           </Group>
 
           <Group number="3.3" title="Search">
-            <dl>
+            <Table>
               <Row action="Filter as you type" note="fuzzy, ranked best-first">
                 <span className="font-mono text-[12.5px] text-ink-muted">any characters</span>
               </Row>
               <Row action="Clear the query without closing the shelf">
                 <Combo keys={["Esc"]} />
               </Row>
-            </dl>
+            </Table>
 
             <p className="mt-8 text-[16px] leading-[1.62] text-ink/75 sm:text-[17px]">
               Bare words fuzzy-match the clipping text, the URL, the hex code, the file names
@@ -189,11 +368,11 @@ export default function KeyboardSpecimen() {
                 <p className={LABEL}>Filter tokens</p>
                 <p className={LABEL}>Matches</p>
               </div>
-              <dl className="px-5">
+              <Table className="px-5">
                 {TOKENS.map(({ token, matches }) => (
-                  <div
+                  <RuledRow
                     key={token}
-                    className="flex flex-wrap items-baseline gap-x-4 gap-y-2 border-b border-rule/70 py-3 last:border-b-0"
+                    className="flex flex-wrap items-baseline gap-x-4 gap-y-2 py-3"
                   >
                     <dt className="shrink-0">
                       <CopyChip text={token} label={token} kind="text" />
@@ -203,40 +382,34 @@ export default function KeyboardSpecimen() {
                         </span>
                       ) : null}
                     </dt>
-                    <span
-                      aria-hidden="true"
-                      className="hidden min-w-8 flex-1 border-b border-dotted border-rule sm:block"
-                    />
-                    <dd className="min-w-0 text-[14.5px] leading-snug text-ink/75 sm:max-w-[38ch] sm:text-right">
+                    <Leader />
+                    <Value className="min-w-0 text-[14.5px] leading-snug text-ink/75 sm:max-w-[38ch] sm:text-right">
                       {matches}
-                    </dd>
-                  </div>
+                    </Value>
+                  </RuledRow>
                 ))}
-              </dl>
+              </Table>
             </div>
 
             {/* Sub-table: worked examples */}
             <div className="mt-8">
               <p className={LABEL}>Worked examples</p>
-              <dl className="mt-3">
+              <Table className="mt-3">
                 {EXAMPLES.map(({ query, reads }) => (
-                  <div
+                  <RuledRow
                     key={query}
-                    className="flex flex-wrap items-baseline gap-x-4 gap-y-2 border-b border-rule/70 py-3.5 last:border-b-0"
+                    className="flex flex-wrap items-baseline gap-x-4 gap-y-2 py-3.5"
                   >
                     <dt className="shrink-0">
                       <CopyChip text={query} label={query} kind="text" />
                     </dt>
-                    <span
-                      aria-hidden="true"
-                      className="hidden min-w-8 flex-1 border-b border-dotted border-rule sm:block"
-                    />
-                    <dd className="min-w-0 text-[14.5px] leading-snug text-ink/75 sm:max-w-[40ch] sm:text-right">
+                    <Leader />
+                    <Value className="min-w-0 text-[14.5px] leading-snug text-ink/75 sm:max-w-[40ch] sm:text-right">
                       {reads}
-                    </dd>
-                  </div>
+                    </Value>
+                  </RuledRow>
                 ))}
-              </dl>
+              </Table>
             </div>
 
             <p className="mt-6 text-[14.5px] leading-[1.6] text-ink-muted">

@@ -75,17 +75,15 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#F5F1EA" },
-    { media: "(prefers-color-scheme: dark)", color: "#121014" },
-  ],
+  // The site leads with the ink edition regardless of OS theme.
+  themeColor: "#121014",
 };
 
 /**
- * Applied before first paint so a stored "ink edition" preference never flashes
- * paper. Default (nothing stored, no system preference) is paper.
+ * Applied before first paint so a stored preference never flashes the wrong
+ * edition. Default is ink — the site leads dark; paper is one toggle away.
  */
-const themeBootstrap = `(function(){try{var s=localStorage.getItem("theme");var t=(s==="dark"||s==="light")?s:(window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.setAttribute("data-theme",t);}catch(e){document.documentElement.setAttribute("data-theme","light");}})();`;
+const themeBootstrap = `(function(){try{var s=localStorage.getItem("theme");var t=(s==="dark"||s==="light")?s:"dark";document.documentElement.setAttribute("data-theme",t);}catch(e){document.documentElement.setAttribute("data-theme","dark");}})();`;
 
 export default function RootLayout({
   children,

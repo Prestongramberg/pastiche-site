@@ -14,14 +14,14 @@ export type Theme = "light" | "dark";
 const STORAGE_KEY = "theme";
 
 type ThemeContextValue = {
-  /** "light" = paper edition (the default), "dark" = ink edition. */
+  /** "dark" = ink edition (the default), "light" = paper edition. */
   theme: Theme;
   setTheme: (theme: Theme) => void;
   toggleTheme: () => void;
 };
 
 const ThemeContext = createContext<ThemeContextValue>({
-  theme: "light",
+  theme: "dark",
   setTheme: () => {},
   toggleTheme: () => {},
 });
@@ -32,7 +32,7 @@ export function useTheme(): ThemeContextValue {
 
 /**
  * Reads the theme the pre-paint bootstrap script in layout.tsx already resolved,
- * falling back to stored preference → system preference → paper.
+ * falling back to stored preference → ink.
  */
 function resolveTheme(): Theme {
   const attr = document.documentElement.getAttribute("data-theme");
@@ -43,13 +43,13 @@ function resolveTheme(): Theme {
   } catch {
     /* storage unavailable (private mode / blocked) — fall through */
   }
-  return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  return "dark";
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   // Paper is the default; the bootstrap script has already painted the real
   // value onto <html>, so this initial state never causes a visible flash.
-  const [theme, setThemeState] = useState<Theme>("light");
+  const [theme, setThemeState] = useState<Theme>("dark");
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -76,7 +76,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       } catch {
         /* no stored choice we can read — follow the system */
       }
-      setThemeState(event.matches ? "dark" : "light");
+      // No stored choice: the site leads with the ink edition regardless of OS theme.
+      setThemeState("dark");
     };
     mq.addEventListener("change", onChange);
     return () => mq.removeEventListener("change", onChange);

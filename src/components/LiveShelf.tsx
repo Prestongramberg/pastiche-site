@@ -23,6 +23,15 @@
  *   slide   0.22s ease-out (PanelController.swift slideDuration)
  *
  * The lip, the ghost chips and everything else outside the panel use the site's tokens.
+ *
+ * MOTION
+ * The panel is the site's one piece of hardware, so it moves on one spring
+ * (SPECIMEN_SPRING, damping ratio ≈ 0.86 → roughly 2px of overshoot on a panel-height
+ * throw: a settle you feel rather than see). Cards arrive from the left edge of the
+ * rail and push their siblings over with a layout animation; the index chips renumber
+ * with a crossfade; the lip's counter waits for the flying scrap to land before it
+ * pulses and rolls over. Under `prefers-reduced-motion` every one of those becomes an
+ * opacity change with no transform and no delay.
  */
 
 import Link from "next/link";
@@ -37,7 +46,13 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from "react";
-import { useReducedMotion } from "framer-motion";
+import {
+  AnimatePresence,
+  motion,
+  useAnimationControls,
+  useReducedMotion,
+  type Variants,
+} from "framer-motion";
 import {
   Check,
   ChevronUp,
@@ -58,6 +73,7 @@ import {
   X,
 } from "lucide-react";
 import {
+  GHOST_TRAVEL_MS,
   isHexColor,
   isLightColor,
   kindLabel,
@@ -79,6 +95,63 @@ const LATEST_URL = `${REPO_URL}/releases/latest`;
 const PEEK_MS = 1600;
 /** Re-check interval while the pointer or focus is still inside during a peek. */
 const PEEK_RECHECK_MS = 600;
+
+/* ------------------------------------------------------------------ motion -- */
+
+/** The one spring every physical part of this component moves on. */
+const SPECIMEN_SPRING = {
+  type: "spring",
+  stiffness: 340,
+  damping: 30,
+  mass: 0.9,
+} as const;
+
+const EASE_SHELF: [number, number, number, number] = [0.16, 1, 0.3, 1];
+
+/** Stagger step and cap for the cards settling in when the panel opens. */
+const CARD_STAGGER_S = 0.03;
+const CARD_STAGGER_MAX = 7;
+
+/**
+ * `layout` is measured work on every render, so only the cards a visitor can plausibly
+ * see shifting get it. Beyond this the rail simply re-renders in place.
+ */
+const LAYOUT_CAP = 10;
+
+/** One-per-session key-press demo on the ⇧⌘V hint. */
+const HINT_KEY = "pastiche.shelf.hint.v1";
+const HINT_CAPS = ["⇧", "⌘", "V"] as const;
+
+/**
+ * Card choreography. Three states, because a card can arrive two different ways:
+ *   enter  — freshly captured: it slides in from the left edge of the rail
+ *   closed — the panel is off-screen; nothing is visible, so nothing is animated
+ *   open   — the panel has arrived and the cards settle in, 30ms apart
+ */
+function cardVariants(reduce: boolean): Variants {
+  if (reduce) {
+    return {
+      enter: { opacity: 0 },
+      // Still deferred, so cards do not blink out from under a panel that is leaving.
+      closed: { opacity: 0, transition: { duration: 0, delay: 0.22 } },
+      open: { opacity: 1, transition: { duration: 0 } },
+    };
+  }
+  return {
+    enter: { opacity: 0, x: -46, y: 0, scale: 0.97 },
+    closed: { opacity: 0, x: 0, y: 6, scale: 1, transition: { duration: 0.01, delay: 0.26 } },
+    open: (index: number) => ({
+      opacity: 1,
+      x: 0,
+      y: 0,
+      scale: 1,
+      transition: {
+        ...SPECIMEN_SPRING,
+        delay: Math.min(index, CARD_STAGGER_MAX) * CARD_STAGGER_S,
+      },
+    }),
+  };
+}
 
 const PRIVACY_NOTE =
   "captures only what you copy on this page — nothing leaves your browser.";
@@ -315,6 +388,33 @@ function CardBody({ item }: { item: ShelfItem }) {
   );
 }
 
+/**
+ * The quick-paste index. Cards renumber whenever the rail shifts, so the digit
+ * crossfades in place rather than snapping — and the chip's box never moves.
+ */
+function IndexChip({ n, reduce }: { n: number; reduce: boolean }) {
+  return (
+    <span className="relative grid h-[15px] w-[17px] shrink-0 place-items-center overflow-hidden rounded-[4px] bg-white/15 text-[9px] font-semibold text-white/90 lg:text-[10px]">
+      {reduce ? (
+        n
+      ) : (
+        <AnimatePresence initial={false}>
+          <motion.span
+            key={n}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.14, ease: EASE_SHELF }}
+            className="absolute inset-0 grid place-items-center"
+          >
+            {n}
+          </motion.span>
+        </AnimatePresence>
+      )}
+    </span>
+  );
+}
+
 function ShelfCard({
   item,
   index,
@@ -323,6 +423,9 @@ function ShelfCard({
   copied,
   timeText,
   onPick,
+  open,
+  isNew,
+  reduce,
 }: {
   item: ShelfItem;
   index: number;
@@ -331,29 +434,48 @@ function ShelfCard({
   copied: boolean;
   timeText: string;
   onPick: () => void;
+  open: boolean;
+  isNew: boolean;
+  reduce: boolean;
 }) {
   const headerColor =
     item.kind === "color" && isHexColor(item.content)
       ? item.content.trim()
       : HEADER_BG[item.kind];
   const lightHeader = item.kind === "color" && isLightColor(item.content);
+  const variants = useMemo(() => cardVariants(reduce), [reduce]);
 
   return (
-    <div
+    <motion.div
       id={id}
       role="option"
       aria-selected={selected}
       data-index={index}
       onClick={onPick}
+      custom={index}
+      variants={variants}
+      initial={isNew ? "enter" : "closed"}
+      animate={open ? "open" : "closed"}
       className={[
-        "relative flex shrink-0 cursor-pointer flex-col overflow-hidden rounded-[12px] bg-[#1d1d20] transition-shadow",
+        "relative flex cursor-pointer flex-col overflow-hidden rounded-[12px] bg-[#1d1d20] ring-1 ring-inset ring-white/10 transition-shadow",
         // 200 × 240 pt in the app, in proportion at every breakpoint.
         "h-[158px] w-[132px] sm:h-[182px] sm:w-[152px] lg:h-[202px] lg:w-[168px]",
         selected
-          ? "shadow-[0_10px_26px_rgba(0,0,0,0.55)] ring-2 ring-[#0a84ff]"
-          : "shadow-[0_6px_18px_rgba(0,0,0,0.45)] ring-1 ring-inset ring-white/10",
+          ? "shadow-[0_10px_26px_rgba(0,0,0,0.55)]"
+          : "shadow-[0_6px_18px_rgba(0,0,0,0.45)]",
       ].join(" ")}
     >
+      {/* Selection ring — one element, glided between cards on the shelf spring. */}
+      {selected ? (
+        <motion.span
+          aria-hidden="true"
+          layoutId={reduce ? undefined : "shelf-selection"}
+          transition={SPECIMEN_SPRING}
+          className="pointer-events-none absolute inset-0 z-20 rounded-[12px]"
+          style={{ boxShadow: "inset 0 0 0 2px #0a84ff" }}
+        />
+      ) : null}
+
       {/* Header strip */}
       <div
         className="flex h-[38px] shrink-0 items-start justify-between gap-1.5 px-2 py-1.5 sm:h-[42px] sm:px-2.5 sm:py-2 lg:h-[46px]"
@@ -394,21 +516,142 @@ function ShelfCard({
         <span className="min-w-0 flex-1 truncate text-[9px] text-white/75 lg:text-[10px]">
           {item.meta}
         </span>
-        {index < 9 ? (
-          <span className="grid h-[15px] w-[17px] shrink-0 place-items-center rounded-[4px] bg-white/15 text-[9px] font-semibold text-white/90 lg:text-[10px]">
-            {index + 1}
-          </span>
-        ) : null}
+        {index < 9 ? <IndexChip n={index + 1} reduce={reduce} /> : null}
       </div>
 
-      {copied ? (
-        <span className="pointer-events-none absolute inset-0 z-10 grid place-items-center bg-black/45">
-          <span className="inline-flex items-center gap-1 rounded-full bg-white/95 px-2 py-1 font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-black">
-            <Check size={10} strokeWidth={3} aria-hidden="true" /> copied
+      <AnimatePresence>
+        {copied ? (
+          <motion.span
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.14, ease: EASE_SHELF }}
+            className="pointer-events-none absolute inset-0 z-10 grid place-items-center bg-black/45"
+          >
+            <motion.span
+              initial={reduce ? false : { scale: 0.84 }}
+              animate={{ scale: 1 }}
+              transition={SPECIMEN_SPRING}
+              className="inline-flex items-center gap-1 rounded-full bg-white/95 px-2 py-1 font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-black"
+            >
+              <Check size={10} strokeWidth={3} aria-hidden="true" /> copied
+            </motion.span>
+          </motion.span>
+        ) : null}
+      </AnimatePresence>
+    </motion.div>
+  );
+}
+
+/* ------------------------------------------------------- lip: count + hint -- */
+
+/**
+ * The lip's clipping count. On a capture it waits for the flying scrap to land,
+ * pulses once, and rolls the digit over — old slides up and out, new slides in.
+ */
+function RollingCount({
+  value,
+  pulse,
+  reduce,
+}: {
+  value: number;
+  pulse: number;
+  reduce: boolean;
+}) {
+  const controls = useAnimationControls();
+
+  useEffect(() => {
+    if (pulse === 0 || reduce) return;
+    void controls.start({
+      scale: [1, 1.25, 1],
+      transition: { duration: 0.26, times: [0, 0.38, 1], ease: EASE_SHELF },
+    });
+  }, [controls, pulse, reduce]);
+
+  return (
+    <motion.span
+      animate={controls}
+      className="rounded-full border border-rule px-1.5 py-px font-mono text-[10px] tabular-nums text-ink-muted"
+    >
+      {reduce ? (
+        value
+      ) : (
+        <span className="relative inline-flex h-[1.6em] items-center justify-center overflow-hidden leading-none">
+          {/* Holds the box open so the roller never causes a reflow. */}
+          <span aria-hidden="true" className="invisible">
+            {value}
           </span>
+          <AnimatePresence initial={false}>
+            <motion.span
+              key={value}
+              initial={{ y: "115%" }}
+              animate={{ y: "0%" }}
+              exit={{ y: "-115%" }}
+              transition={{ duration: 0.18, ease: EASE_SHELF }}
+              className="absolute inset-0 grid place-items-center"
+            >
+              {value}
+            </motion.span>
+          </AnimatePresence>
         </span>
-      ) : null}
-    </div>
+      )}
+    </motion.span>
+  );
+}
+
+/**
+ * The ⇧⌘V hint. Once per session, on a fine pointer, the three caps press down in
+ * order — the shortcut demonstrating itself rather than asserting itself.
+ *
+ * DESIGN.md asks for this the first time the lip scrolls into view; the lip is
+ * position: fixed and therefore always in view, so "in view" resolves to "shortly
+ * after the chrome has settled".
+ */
+function ShortcutHint() {
+  const reduceMotion = useReducedMotion() ?? false;
+  const [play, setPlay] = useState(false);
+
+  useEffect(() => {
+    if (reduceMotion) return;
+    if (!window.matchMedia("(pointer: fine)").matches) return;
+    try {
+      if (window.sessionStorage.getItem(HINT_KEY) === "1") return;
+    } catch {
+      /* private mode — the hint is not worth a throw */
+    }
+    const id = window.setTimeout(() => {
+      setPlay(true);
+      try {
+        window.sessionStorage.setItem(HINT_KEY, "1");
+      } catch {
+        /* ignore */
+      }
+    }, 1100);
+    return () => window.clearTimeout(id);
+  }, [reduceMotion]);
+
+  return (
+    <span
+      aria-hidden="true"
+      className="hidden items-center gap-1 md:inline-flex"
+      title="Open the shelf"
+    >
+      {HINT_CAPS.map((cap, index) => (
+        <motion.kbd
+          key={cap}
+          className="kbd"
+          animate={play && !reduceMotion ? { y: [0, 2, 0] } : { y: 0 }}
+          transition={{
+            duration: 0.2,
+            times: [0, 0.35, 1],
+            ease: EASE_SHELF,
+            delay: index * 0.12,
+          }}
+        >
+          {cap}
+        </motion.kbd>
+      ))}
+    </span>
   );
 }
 
@@ -437,16 +680,33 @@ export default function LiveShelf() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [pendingFocus, setPendingFocus] = useState(false);
+  /** The count the lip shows — held back until the flying scrap has landed. */
+  const [countDisplay, setCountDisplay] = useState(items.length);
+  const [countPulse, setCountPulse] = useState(0);
 
   const glyphRef = useRef<HTMLSpanElement | null>(null);
   const railRef = useRef<HTMLDivElement | null>(null);
   const toggleRef = useRef<HTMLButtonElement | null>(null);
   const retractTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const countTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const countHoldRef = useRef(false);
   const peekRef = useRef(false);
   const hoverRef = useRef(false);
   const focusRef = useRef(false);
   const lastSeqRef = useRef(0);
+
+  /** Read inside timers, so it must not go stale. */
+  const itemCountRef = useRef(items.length);
+  itemCountRef.current = items.length;
+
+  /**
+   * Anything captured after this component mounted is "new" and earns the slide-in
+   * from the rail's left edge. Seeded clippings (capturedAt === null) and clippings
+   * restored from sessionStorage never do — they were already on the shelf.
+   */
+  const mountedAtRef = useRef(0);
+  if (mountedAtRef.current === 0) mountedAtRef.current = Date.now();
 
   const safeSelected = items.length === 0 ? 0 : Math.min(selected, items.length - 1);
   const selectedItem = items[safeSelected];
@@ -462,6 +722,7 @@ export default function LiveShelf() {
     () => () => {
       if (retractTimer.current) clearTimeout(retractTimer.current);
       if (copiedTimer.current) clearTimeout(copiedTimer.current);
+      if (countTimer.current) clearTimeout(countTimer.current);
     },
     [],
   );
@@ -536,7 +797,7 @@ export default function LiveShelf() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [closeShelf, isOpen, toggleShelf]);
 
-  /* A capture makes the shelf peek, then retract. */
+  /* A capture makes the shelf peek, then retract — and lands a scrap on the lip. */
   useEffect(() => {
     if (captureSeq === 0 || captureSeq === lastSeqRef.current) return;
     lastSeqRef.current = captureSeq;
@@ -547,7 +808,30 @@ export default function LiveShelf() {
       open();
     }
     if (peekRef.current) scheduleRetract(PEEK_MS);
-  }, [captureSeq, isOpen, open, scheduleRetract]);
+
+    // The counter belongs to the scrap, not to the state change: it holds until the
+    // ghost lands on the lip, then pulses and rolls over.
+    if (countTimer.current) clearTimeout(countTimer.current);
+    if (reduceMotion) {
+      countHoldRef.current = false;
+      setCountDisplay(itemCountRef.current);
+      return;
+    }
+    countHoldRef.current = true;
+    countTimer.current = setTimeout(() => {
+      countHoldRef.current = false;
+      countTimer.current = null;
+      setCountDisplay(itemCountRef.current);
+      setCountPulse((n) => n + 1);
+    }, GHOST_TRAVEL_MS - 30);
+  }, [captureSeq, isOpen, open, reduceMotion, scheduleRetract]);
+
+  /* Every other route to a count change — clear, delete, restore — lands at once.
+     Declared after the capture effect so a capture's hold is already armed. */
+  useEffect(() => {
+    if (countHoldRef.current) return;
+    setCountDisplay(items.length);
+  }, [items.length]);
 
   /* Leaving the page closes the shelf behind you. */
   useEffect(() => {
@@ -690,20 +974,25 @@ export default function LiveShelf() {
         </p>
 
         {/* ------------------------------------------------------- panel -- */}
-        <div
+        {/* `initial` is an object so framer writes translateY(100%) into the static
+            HTML — the panel is never briefly on screen before hydration. */}
+        <motion.div
           id={panelId}
           inert={!isOpen}
           onPointerEnter={onPointerEnter}
           onPointerLeave={onPointerLeave}
           onFocusCapture={onFocusCapture}
           onBlurCapture={onBlurCapture}
+          initial={{ y: "100%", opacity: 1 }}
+          animate={
+            reduceMotion
+              ? { y: "0%", opacity: isOpen ? 1 : 0 }
+              : { y: isOpen ? "0%" : "100%", opacity: 1 }
+          }
+          transition={reduceMotion ? { duration: 0 } : SPECIMEN_SPRING}
           className={[
             "fixed inset-x-0 bottom-0 z-40 pb-[calc(var(--lip)_+_env(safe-area-inset-bottom))]",
-            "transition-[transform,opacity] duration-[220ms] [transition-timing-function:var(--ease-shelf,cubic-bezier(0.16,1,0.3,1))]",
-            "will-change-transform",
-            isOpen
-              ? "pointer-events-auto translate-y-0 opacity-100"
-              : "pointer-events-none translate-y-full opacity-100 motion-reduce:translate-y-0 motion-reduce:opacity-0",
+            isOpen ? "pointer-events-auto" : "pointer-events-none",
           ].join(" ")}
         >
           <div className="mx-auto w-full max-w-[1600px]">
@@ -768,19 +1057,34 @@ export default function LiveShelf() {
                   className="flex min-h-0 flex-1 gap-2 overflow-x-auto overflow-y-hidden px-3 pb-4 pt-3 outline-none [scrollbar-color:rgba(255,255,255,0.22)_transparent] [scrollbar-width:thin] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#9d85ff] sm:gap-2.5 sm:px-3.5 sm:pb-5 sm:pt-3.5"
                 >
                   {items.map((item, index) => (
-                    <ShelfCard
+                    // The wrapper carries the layout animation: a new card pushes its
+                    // siblings along the rail instead of teleporting them.
+                    // role="presentation" keeps the listbox → option relationship intact.
+                    <motion.div
                       key={item.id}
-                      id={cardId(index)}
-                      item={item}
-                      index={index}
-                      selected={index === safeSelected}
-                      copied={copiedId === item.id}
-                      timeText={timeTextFor(item)}
-                      onPick={() => {
-                        setSelected(index);
-                        void copyItem(item);
-                      }}
-                    />
+                      role="presentation"
+                      layout={reduceMotion || index > LAYOUT_CAP ? false : "position"}
+                      transition={SPECIMEN_SPRING}
+                      className="shrink-0"
+                    >
+                      <ShelfCard
+                        id={cardId(index)}
+                        item={item}
+                        index={index}
+                        selected={index === safeSelected}
+                        copied={copiedId === item.id}
+                        timeText={timeTextFor(item)}
+                        open={isOpen}
+                        isNew={
+                          item.capturedAt !== null && item.capturedAt >= mountedAtRef.current
+                        }
+                        reduce={reduceMotion}
+                        onPick={() => {
+                          setSelected(index);
+                          void copyItem(item);
+                        }}
+                      />
+                    </motion.div>
                   ))}
                 </div>
               ) : (
@@ -802,14 +1106,22 @@ export default function LiveShelf() {
                   <p className="min-w-0 flex-1 truncate font-mono text-[10px] tracking-[0.06em] text-white/45">
                     {provenance}
                   </p>
-                  <span
+                  {/* The legend arrives last, after the cards have settled. */}
+                  <motion.span
                     aria-hidden="true"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: isOpen ? 1 : 0 }}
+                    transition={
+                      reduceMotion
+                        ? { duration: 0 }
+                        : { duration: 0.24, ease: EASE_SHELF, delay: isOpen ? 0.3 : 0 }
+                    }
                     className="hidden shrink-0 items-center gap-2.5 font-mono text-[9.5px] uppercase tracking-[0.14em] text-white/30 lg:flex"
                   >
                     <span>← → select</span>
                     <span>return copy</span>
                     <span>esc close</span>
-                  </span>
+                  </motion.span>
                   <button
                     type="button"
                     onClick={reset}
@@ -824,7 +1136,7 @@ export default function LiveShelf() {
               </div>
             </section>
           </div>
-        </div>
+        </motion.div>
 
         {/* --------------------------------------------------------- lip -- */}
         <div
@@ -832,7 +1144,17 @@ export default function LiveShelf() {
           onPointerLeave={onPointerLeave}
           onFocusCapture={onFocusCapture}
           onBlurCapture={onBlurCapture}
-          className="fixed inset-x-0 bottom-0 z-50 border-t border-rule bg-paper-raised/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl"
+          className={[
+            // Seated 3px below the viewport with the padding compensating, so the 2px
+            // hover lift can never open a gap along the bottom edge.
+            "fixed inset-x-0 bottom-[-3px] z-50 border-t border-rule bg-paper-raised/90 backdrop-blur-xl",
+            "pb-[calc(env(safe-area-inset-bottom)_+_3px)]",
+            "transition-[transform,box-shadow] duration-[180ms] [transition-timing-function:var(--ease-shelf)]",
+            // Magnetism: fine pointers only, and only while the lip is the closed handle.
+            isOpen
+              ? ""
+              : "pointer-fine:hover:-translate-y-[2px] pointer-fine:hover:shadow-[0_-14px_34px_-16px_rgba(0,0,0,0.34)]",
+          ].join(" ")}
         >
           <div className="relative mx-auto flex h-[var(--lip)] w-full max-w-[1600px] items-center gap-1 px-2 sm:gap-3 sm:px-5">
             {/* Mouse-only: the whole lip is a handle for the shelf. */}
@@ -859,16 +1181,15 @@ export default function LiveShelf() {
               <span className="hidden font-mono text-[11px] uppercase tracking-[0.14em] sm:inline">
                 Shelf
               </span>
-              <span className="rounded-full border border-rule px-1.5 py-px font-mono text-[10px] tabular-nums text-ink-muted">
-                {items.length}
-              </span>
-              <ChevronUp
-                size={13}
+              <RollingCount value={countDisplay} pulse={countPulse} reduce={reduceMotion} />
+              <motion.span
                 aria-hidden="true"
-                className={`hidden text-ink-muted transition-transform duration-200 sm:block ${
-                  isOpen ? "rotate-180" : ""
-                }`}
-              />
+                className="hidden text-ink-muted sm:block"
+                animate={{ rotate: isOpen ? 180 : 0 }}
+                transition={reduceMotion ? { duration: 0 } : SPECIMEN_SPRING}
+              >
+                <ChevronUp size={13} aria-hidden="true" />
+              </motion.span>
             </button>
 
             <nav
@@ -896,15 +1217,7 @@ export default function LiveShelf() {
             <div className="relative z-10 flex shrink-0 items-center gap-1.5 sm:gap-2.5">
               <PrivacyNote />
 
-              <span
-                aria-hidden="true"
-                className="hidden items-center gap-1 md:inline-flex"
-                title="Open the shelf"
-              >
-                <kbd className="kbd">⇧</kbd>
-                <kbd className="kbd">⌘</kbd>
-                <kbd className="kbd">V</kbd>
-              </span>
+              <ShortcutHint />
 
               <a
                 href={LATEST_URL}

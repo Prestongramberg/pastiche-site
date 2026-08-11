@@ -88,6 +88,13 @@ type ShelfContextValue = {
 
 const STORAGE_KEY = "pastiche.shelf.v1";
 const MAX_ITEMS = 24;
+
+/**
+ * How long a ghost scrap takes to travel its arc, in ms. Exported because the lip's
+ * clipping counter waits for the landing before it pulses and ticks up — the two
+ * halves of one gesture, kept in sync from one number.
+ */
+export const GHOST_TRAVEL_MS = 500;
 const MAX_STORED_CHARS = 1200;
 const SUPPRESS_MS = 150;
 const DEDUPE_MS = 900;
@@ -552,19 +559,61 @@ export function useShelfStore(): ShelfContextValue {
 
 const GHOST_EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
 
-function GhostLayer({ ghosts, onDone }: { ghosts: Ghost[]; onDone: (id: string) => void }) {
-  if (ghosts.length === 0) return null;
+/** Travel, then an 80ms squash on landing, then it dissolves into the lip. */
+const TRAVEL_S = GHOST_TRAVEL_MS / 1000;
+const SQUASH_S = 0.08;
+const DISSOLVE_S = 0.05;
+const TOTAL_S = TRAVEL_S + SQUASH_S + DISSOLVE_S;
+
+/**
+ * A scrap of copied content, tossed to the shelf.
+ *
+ * The arc is built from two chained transforms rather than a straight tween: the outer
+ * span carries X at a constant decelerating rate, the inner span carries Y through an
+ * up-then-down keyframe pair (easeOut on the rise, easeIn on the fall). Composed, that
+ * is a quadratic toss — paper thrown onto a shelf, not a cursor sliding down a line.
+ * The scrap itself only shrinks, squashes on impact (originY: 1, so it presses into
+ * the lip), and dissolves.
+ */
+function GhostScrap({ ghost, onDone }: { ghost: Ghost; onDone: (id: string) => void }) {
+  const dx = ghost.to.x - ghost.from.x;
+  const dy = ghost.to.y - ghost.from.y;
+  // A short toss gets a shallow arc; a cross-page toss gets a tall one.
+  const lift = Math.max(46, Math.min(150, Math.abs(dx) * 0.2 + Math.abs(dy) * 0.14));
+  const apex = Math.min(ghost.from.y, ghost.to.y) - lift;
 
   return (
-    <div aria-hidden="true" className="pointer-events-none fixed inset-0 z-[60] overflow-hidden">
-      {ghosts.map((ghost) => (
+    <motion.span
+      className="absolute left-0 top-0 block"
+      initial={{ x: ghost.from.x }}
+      animate={{ x: ghost.to.x }}
+      transition={{ duration: TRAVEL_S, ease: GHOST_EASE }}
+    >
+      <motion.span
+        className="block"
+        initial={{ y: ghost.from.y }}
+        animate={{ y: [ghost.from.y, apex, ghost.to.y] }}
+        transition={{
+          duration: TRAVEL_S,
+          times: [0, 0.44, 1],
+          ease: ["easeOut", "easeIn"],
+        }}
+      >
         <motion.span
-          key={ghost.id}
-          initial={{ x: ghost.from.x, y: ghost.from.y, opacity: 0.95, scale: 1 }}
-          animate={{ x: ghost.to.x, y: ghost.to.y, opacity: 0, scale: 0.55 }}
-          transition={{ duration: 0.52, ease: GHOST_EASE }}
+          initial={{ scaleX: 1, scaleY: 1, opacity: 0.95 }}
+          animate={{
+            scaleX: [1, 0.74, 0.86, 0.72],
+            scaleY: [1, 0.74, 0.59, 0.72],
+            opacity: [0.95, 0.92, 0.82, 0],
+          }}
+          transition={{
+            duration: TOTAL_S,
+            times: [0, TRAVEL_S / TOTAL_S, (TRAVEL_S + SQUASH_S) / TOTAL_S, 1],
+            ease: GHOST_EASE,
+          }}
+          style={{ originX: 0.5, originY: 1 }}
           onAnimationComplete={() => onDone(ghost.id)}
-          className="absolute left-0 top-0 inline-flex max-w-[13rem] items-center gap-1.5 rounded-[6px] border border-rule bg-paper-raised px-2 py-1 font-mono text-[11px] text-ink/80 shadow-[0_8px_24px_rgba(0,0,0,0.18)]"
+          className="inline-flex max-w-[13rem] items-center gap-1.5 rounded-[6px] border border-rule bg-paper-raised px-2 py-1 font-mono text-[11px] text-ink/80 shadow-[0_8px_24px_rgba(0,0,0,0.18)]"
         >
           {ghost.kind === "color" && isHexColor(ghost.content) ? (
             <span
@@ -576,6 +625,21 @@ function GhostLayer({ ghosts, onDone }: { ghosts: Ghost[]; onDone: (id: string) 
           )}
           <span className="truncate">{shortPreview(ghost.content, 22)}</span>
         </motion.span>
+      </motion.span>
+    </motion.span>
+  );
+}
+
+function GhostLayer({ ghosts, onDone }: { ghosts: Ghost[]; onDone: (id: string) => void }) {
+  // `fly()` already refuses to queue scraps under reduced motion; this is the belt
+  // to that pair of braces, so a preference change mid-session takes effect too.
+  const reduceMotion = useReducedMotion() ?? false;
+  if (reduceMotion || ghosts.length === 0) return null;
+
+  return (
+    <div aria-hidden="true" className="pointer-events-none fixed inset-0 z-[60] overflow-hidden">
+      {ghosts.map((ghost) => (
+        <GhostScrap key={ghost.id} ghost={ghost} onDone={onDone} />
       ))}
     </div>
   );

@@ -106,11 +106,32 @@ export default function Colophon() {
         {/* Imprint */}
         <div className="mt-14 flex flex-wrap items-baseline justify-between gap-x-8 gap-y-3 border-t border-rule pt-6 sm:mt-16">
           <p className="font-mono text-[11.5px] tracking-[0.06em] text-ink-muted">
-            Designed &amp; built by Preston Gramberg · Minnesota
+            Designed &amp; built by Gramberg Media · Minnesota
           </p>
           <p className="font-mono text-[11.5px] tracking-[0.06em] text-ink">
             All data stays on your Mac.
           </p>
+        </div>
+
+        {/* Agency credit — every Gramberg Media build links home. */}
+        <div className="mt-6 flex justify-center sm:justify-end">
+          <a
+            href="https://grambergmedia.com?utm_source=pastiche&utm_medium=footer_credit&utm_campaign=client_sites"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Site by Gramberg Media"
+            className="inline-flex items-center gap-2 font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-muted opacity-80 transition-colors hover:text-ink hover:opacity-100"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/gramberg-lion.png"
+              alt=""
+              width={16}
+              height={16}
+              className="rounded-full"
+            />
+            Site by Gramberg Media
+          </a>
         </div>
       </div>
     </footer>
