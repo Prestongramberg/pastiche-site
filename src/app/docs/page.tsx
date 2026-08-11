@@ -1,39 +1,18 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import {
-  Accessibility,
-  ArrowUpRight,
-  BookOpen,
-  Download,
-  Eye,
-  Github,
-  Hammer,
-  Info,
-  Keyboard,
-  Layers,
-  MessageCircle,
-  Move,
-  Pause,
-  Pin,
-  RefreshCw,
-  Search,
-  Settings,
-  ShieldAlert,
-  Terminal,
-  Trash2,
-  Zap,
-  type LucideIcon,
-} from "lucide-react";
+
+import CopyChip from "@/components/CopyChip";
+import DownloadButton from "@/components/DownloadButton";
 
 export const metadata: Metadata = {
-  title: "Docs",
+  title: "Documentation",
   description:
-    "How to install and use Pastiche: the shelf, pinboards, previews, power search, settings, updates, building from source, and uninstalling.",
+    "Install Pastiche, learn the nine keystrokes, read the power-search syntax, and see exactly where the data lives — every command, path, and permission step as the app ships them.",
   alternates: { canonical: "/docs" },
   openGraph: {
-    title: "Pastiche Docs",
+    title: "Documentation",
     description:
-      "How to install and use Pastiche — the shelf, pinboards, previews, power search, settings, updates, and building from source.",
+      "Install, shortcuts, power search, settings, updates, building from source, and uninstalling — matched to the shipping app.",
     url: "/docs",
     type: "article",
   },
@@ -43,44 +22,57 @@ const REPO = "https://github.com/Prestongramberg/Pastiche";
 const RELEASES = `${REPO}/releases/latest`;
 const ISSUES = `${REPO}/issues/new`;
 const CHANGELOG = `${REPO}/blob/main/CHANGELOG.md`;
+const APPCAST = `${REPO}/blob/main/appcast.xml`;
 
 /* -------------------------------------------------------------------------- */
-/*  Data                                                                      */
+/*  Shared type treatments                                                     */
 /* -------------------------------------------------------------------------- */
 
-type NavItem = { id: string; label: string; icon: LucideIcon };
+/** The credibility layer: 11px mono, uppercase, wide tracking. */
+const LABEL = "font-mono text-[11px] uppercase tracking-[0.12em] text-ink-muted";
+
+/* -------------------------------------------------------------------------- */
+/*  Data                                                                       */
+/* -------------------------------------------------------------------------- */
+
+type NavItem = { n: string; id: string; label: string };
 
 const NAV: NavItem[] = [
-  { id: "install", label: "Install", icon: Download },
-  { id: "using", label: "Using Pastiche", icon: Zap },
-  { id: "power-search", label: "Power search", icon: Search },
-  { id: "settings", label: "Settings", icon: Settings },
-  { id: "updates", label: "Updates", icon: RefreshCw },
-  { id: "build", label: "Build from source", icon: Hammer },
-  { id: "uninstall", label: "Uninstall", icon: Trash2 },
-  { id: "help", label: "Get help", icon: MessageCircle },
+  { n: "01", id: "install", label: "Install" },
+  { n: "02", id: "using", label: "Using Pastiche" },
+  { n: "03", id: "power-search", label: "Power search" },
+  { n: "04", id: "settings", label: "Settings" },
+  { n: "05", id: "updates", label: "Updates" },
+  { n: "06", id: "build", label: "Build from source" },
+  { n: "07", id: "uninstall", label: "Uninstall" },
+  { n: "08", id: "help", label: "Get help" },
 ];
 
-type Shortcut = { chords: string[][]; separator?: string; action: string };
+type Shortcut = { keys: string[][]; separator?: string; action: string };
 
 const SHORTCUTS: Shortcut[] = [
   {
-    chords: [["⇧", "⌘", "V"]],
+    keys: [["⇧", "⌘", "V"]],
     action: "Toggle the shelf — works anywhere, and is re-bindable in Settings",
   },
-  { chords: [["←"], ["→"]], separator: "/", action: "Move the selection" },
-  { chords: [["Return"]], action: "Paste the selected item into the app you came from" },
-  { chords: [["⇧", "Return"]], action: "Paste the selected item as plain text" },
-  { chords: [["Space"]], action: "Toggle the large preview" },
-  { chords: [["⌘", "1"], ["⌘", "9"]], separator: "…", action: "Paste the 1st … 9th visible card" },
-  { chords: [["⌘", "F"]], action: "Focus the search field — typing anywhere also focuses it" },
-  { chords: [["Delete"]], action: "Delete the selected item" },
-  { chords: [["Esc"]], action: "Close the preview → clear the search → hide the shelf" },
+  { keys: [["←"], ["→"]], separator: "/", action: "Move the selection" },
+  { keys: [["Return"]], action: "Paste the selected item into the app you came from" },
+  { keys: [["⇧", "Return"]], action: "Paste the selected item as plain text" },
+  { keys: [["Space"]], action: "Toggle the large preview" },
+  {
+    keys: [
+      ["⌘", "1"],
+      ["⌘", "9"],
+    ],
+    separator: "…",
+    action: "Paste the 1st … 9th visible card",
+  },
+  { keys: [["⌘", "F"]], action: "Focus the search field — typing anywhere also focuses it" },
+  { keys: [["Delete"]], action: "Delete the selected item" },
+  { keys: [["Esc"]], action: "Close the preview → clear the search → hide the shelf" },
 ];
 
-type Token = { token: string; matches: string };
-
-const SEARCH_TOKENS: Token[] = [
+const SEARCH_TOKENS: { token: string; matches: string }[] = [
   { token: "type:text", matches: "Text and rich-text clippings" },
   { token: "type:image", matches: "Images" },
   { token: "type:link", matches: "Links" },
@@ -92,121 +84,143 @@ const SEARCH_TOKENS: Token[] = [
   },
 ];
 
+const SEARCH_EXAMPLES: { query: string; means: string }[] = [
+  { query: "type:link github", means: 'links mentioning "github"' },
+  { query: "app:xcode type:text", means: "text copied out of Xcode" },
+  { query: "app:com.apple.Safari", means: "everything grabbed from Safari" },
+  { query: "#ff", means: 'colors (and anything else) containing "#ff"' },
+];
+
 const CAPTURED = ["Plain text", "Rich text", "Links", "Images", "Files", "Colors"];
 
 /* -------------------------------------------------------------------------- */
-/*  Building blocks                                                           */
+/*  Building blocks                                                            */
 /* -------------------------------------------------------------------------- */
 
-function Keys({ keys }: { keys: string[] }) {
+/** A copyable keystroke cluster: real <kbd> semantics inside a CopyChip. */
+function Combo({ keys }: { keys: string[] }) {
+  const spaced = keys.some((key) => key.length > 1);
   return (
-    <span className="inline-flex items-center gap-1 align-middle">
-      {keys.map((key, index) => (
-        <kbd key={`${key}-${index}`} className="kbd">
-          {key}
-        </kbd>
-      ))}
-    </span>
+    <CopyChip
+      text={keys.join(spaced ? " " : "")}
+      kind="text"
+      label={
+        <span className="inline-flex items-center gap-1">
+          {keys.map((key, index) => (
+            <kbd key={`${key}-${index}`} className="kbd">
+              {key}
+            </kbd>
+          ))}
+        </span>
+      }
+    />
   );
 }
 
-function Chords({ chords, separator }: { chords: string[][]; separator?: string }) {
+function Combos({ keys, separator }: { keys: string[][]; separator?: string }) {
   return (
-    <span className="inline-flex flex-wrap items-center gap-1.5">
-      {chords.map((chord, index) => (
-        <span key={index} className="inline-flex items-center gap-1.5">
+    <span className="inline-flex flex-wrap items-center gap-2">
+      {keys.map((chord, index) => (
+        <span key={index} className="inline-flex items-center gap-2">
           {index > 0 && separator ? (
-            <span className="text-foreground/35 text-sm">{separator}</span>
+            <span aria-hidden="true" className="text-ink-muted text-sm">
+              {separator}
+            </span>
           ) : null}
-          <Keys keys={chord} />
+          <Combo keys={chord} />
         </span>
       ))}
     </span>
   );
 }
 
-function Code({ children }: { children: string }) {
+/** Inline mono for identifiers that are not worth copying (API names, file suffixes). */
+function Mono({ children }: { children: ReactNode }) {
   return (
-    <code className="bg-darker border-border text-foreground/85 rounded-md border px-1.5 py-0.5 font-mono text-[0.85em] break-words">
+    <code className="border-rule text-ink border-b border-dotted font-mono text-[0.88em] break-words">
       {children}
     </code>
   );
 }
 
-function CodeBlock({ label, code }: { label: string; code: string }) {
+/** Emphasis inside body copy — value, not weight. Never above 600. */
+function UI({ children }: { children: ReactNode }) {
+  return <strong className="text-ink font-medium">{children}</strong>;
+}
+
+function Link({ href, children }: { href: string; children: ReactNode }) {
   return (
-    <div className="border-border bg-darker overflow-hidden rounded-xl border">
-      <div className="border-border flex items-center gap-2 border-b px-4 py-2.5">
-        <Terminal size={13} className="text-accent shrink-0" aria-hidden="true" />
-        <span className="text-foreground/50 text-xs font-semibold tracking-wide">{label}</span>
-      </div>
-      <pre className="overflow-x-auto px-4 py-4 text-[13px] leading-relaxed">
-        <code className="text-foreground/85 font-mono">{code}</code>
-      </pre>
-    </div>
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-accent decoration-accent/35 hover:decoration-accent focus-visible:outline-accent rounded-xs underline decoration-1 underline-offset-4 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2"
+    >
+      {children}
+      <span aria-hidden="true"> ↗</span>
+    </a>
   );
 }
 
 function Section({
+  n,
   id,
   label,
   title,
   lede,
   children,
 }: {
+  n: string;
   id: string;
   label: string;
-  title: ReactNode;
+  title: string;
   lede?: ReactNode;
   children: ReactNode;
 }) {
   return (
-    <section id={id} className="scroll-mt-28">
-      <p className="text-accent text-xs font-bold tracking-[0.2em] uppercase">{label}</p>
-      <h2 className="mt-3 text-3xl font-black tracking-tight md:text-4xl">{title}</h2>
+    <section id={id} className="scroll-mt-24">
+      <div className="border-rule flex items-baseline gap-4 border-b pb-3">
+        <span className={LABEL}>§ {n}</span>
+        <span className={LABEL}>{label}</span>
+      </div>
+      <h2 className="font-serif text-ink mt-7 text-[clamp(2rem,4.5vw,3rem)] leading-[1.04] tracking-[-0.025em]">
+        {title}
+      </h2>
       {lede ? (
-        <p className="text-foreground/50 mt-4 max-w-2xl leading-relaxed">{lede}</p>
+        <p className="text-ink-muted mt-5 max-w-[62ch] text-[17px] leading-[1.6]">{lede}</p>
       ) : null}
-      <div className="mt-8 space-y-5">{children}</div>
+      <div className="mt-10 space-y-9">{children}</div>
     </section>
   );
 }
 
-function Card({
-  icon: Icon,
-  title,
-  children,
-}: {
-  icon: LucideIcon;
-  title: string;
-  children: ReactNode;
-}) {
+/**
+ * The specimen annotation block: mono label in the margin, serif claim + sans body
+ * in the column. Hairline top rule instead of a shadowed card.
+ */
+function Block({ label, title, children }: { label: string; title: string; children: ReactNode }) {
   return (
-    <div className="bg-card border-border hover:border-foreground/20 rounded-2xl border p-5 transition-colors md:p-6">
-      <div className="flex items-center gap-3">
-        <span className="bg-accent/10 text-accent flex h-9 w-9 shrink-0 items-center justify-center rounded-lg">
-          <Icon size={17} aria-hidden="true" />
-        </span>
-        <h3 className="text-base font-bold tracking-tight">{title}</h3>
-      </div>
-      <div className="text-foreground/60 mt-4 space-y-3 text-[15px] leading-relaxed">
-        {children}
+    <div className="border-rule grid gap-x-8 gap-y-3 border-t pt-6 md:grid-cols-[9rem_minmax(0,1fr)]">
+      <p className={`${LABEL} md:pt-2`}>{label}</p>
+      <div className="min-w-0">
+        <h3 className="font-serif text-ink text-[1.45rem] leading-snug tracking-[-0.015em]">
+          {title}
+        </h3>
+        <div className="text-ink-muted mt-3 space-y-3 text-[16px] leading-[1.65]">{children}</div>
       </div>
     </div>
   );
 }
 
-function Step({ number, title, children }: { number: number; title: string; children: ReactNode }) {
+function Step({ n, title, children }: { n: string; title: string; children: ReactNode }) {
   return (
-    <li className="bg-card border-border hover:border-foreground/20 flex gap-4 rounded-2xl border p-5 transition-colors md:p-6">
-      <span className="bg-gradient flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sm font-bold text-white">
-        {number}
-      </span>
+    <li className="border-rule grid gap-x-8 gap-y-3 border-t pt-6 md:grid-cols-[9rem_minmax(0,1fr)]">
+      <p className={`${LABEL} md:pt-2`}>Step {n}</p>
       <div className="min-w-0">
-        <h3 className="text-base font-bold tracking-tight">{title}</h3>
-        <div className="text-foreground/60 mt-2 space-y-2 text-[15px] leading-relaxed">
-          {children}
-        </div>
+        <h3 className="font-serif text-ink text-[1.45rem] leading-snug tracking-[-0.015em]">
+          {title}
+        </h3>
+        <div className="text-ink-muted mt-3 space-y-3 text-[16px] leading-[1.65]">{children}</div>
       </div>
     </li>
   );
@@ -214,414 +228,309 @@ function Step({ number, title, children }: { number: number; title: string; chil
 
 function Note({ children }: { children: ReactNode }) {
   return (
-    <div className="border-accent bg-accent/5 flex gap-3 rounded-r-xl border-l-2 px-4 py-3">
-      <Info size={15} className="text-accent mt-0.5 shrink-0" aria-hidden="true" />
-      <p className="text-foreground/60 text-sm leading-relaxed">{children}</p>
+    <p className="border-guide text-ink-muted border-l-2 py-1 pl-4 text-[15px] leading-[1.65]">
+      {children}
+    </p>
+  );
+}
+
+/** A terminal transcript where every line is individually copyable. */
+function CommandBlock({
+  label,
+  lines,
+}: {
+  label: string;
+  lines: { comment?: string; command: string }[];
+}) {
+  return (
+    <div className="border-rule bg-paper-raised border">
+      <div className="border-rule border-b px-4 py-2.5">
+        <span className={LABEL}>{label}</span>
+      </div>
+      <div className="space-y-4 p-4">
+        {lines.map((line) => (
+          <div key={line.command} className="space-y-1.5">
+            {line.comment ? (
+              <p className="text-ink-muted font-mono text-[12px] leading-relaxed">
+                # {line.comment}
+              </p>
+            ) : null}
+            <div className="overflow-x-auto">
+              <CopyChip text={line.command} kind="command" />
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
 
-function NavList({ compact = false }: { compact?: boolean }) {
+function NavList({ layout = "column" }: { layout?: "column" | "grid" }) {
   return (
-    <ul className={compact ? "grid grid-cols-1 gap-1 sm:grid-cols-2" : "space-y-0.5"}>
-      {NAV.map(({ id, label, icon: Icon }) => (
+    <ol className={layout === "grid" ? "grid grid-cols-1 gap-px sm:grid-cols-2" : "space-y-px"}>
+      {NAV.map(({ n, id, label }) => (
         <li key={id}>
           <a
             href={`#${id}`}
-            className="text-foreground/55 hover:text-foreground hover:bg-card focus-visible:ring-accent/60 flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:outline-none"
+            className="text-ink-muted hover:text-ink focus-visible:outline-accent group flex items-baseline gap-3 py-2 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2"
           >
-            <Icon size={14} className="text-accent/70 shrink-0" aria-hidden="true" />
-            {label}
+            <span className="font-mono text-[11px] tracking-[0.12em] tabular-nums">{n}</span>
+            <span className="group-hover:decoration-ink/30 text-[13px] underline decoration-transparent decoration-1 underline-offset-4 transition-colors">
+              {label}
+            </span>
           </a>
         </li>
       ))}
-    </ul>
+    </ol>
   );
 }
 
 /* -------------------------------------------------------------------------- */
-/*  Page                                                                      */
+/*  Page                                                                       */
 /* -------------------------------------------------------------------------- */
 
 export default function DocsPage() {
   return (
     <div id="top">
-      {/* ---------------------------------------------------------------- */}
-      {/* Header                                                            */}
-      {/* ---------------------------------------------------------------- */}
-      <header className="border-border grid-bg relative overflow-hidden border-b">
-        <div
-          aria-hidden="true"
-          className="bg-accent/10 pointer-events-none absolute -top-40 left-1/4 h-80 w-80 rounded-full blur-[120px]"
-        />
-        <div
-          aria-hidden="true"
-          className="bg-electric/10 pointer-events-none absolute -right-20 -bottom-40 h-80 w-80 rounded-full blur-[120px]"
-        />
+      {/* ------------------------------------------------------------------ */}
+      {/* Masthead — deliberately a fraction of the specimen plate on "/"     */}
+      {/* ------------------------------------------------------------------ */}
+      <header className="border-rule border-b">
+        <div className="mx-auto max-w-6xl px-6 pt-24 pb-14 md:pt-28 md:pb-16">
+          <p className={LABEL}>Pastiche — Documentation · macOS 13+ · MIT</p>
 
-        <div className="relative mx-auto max-w-6xl px-6 pt-32 pb-16 md:pt-40 md:pb-20">
-          <span className="border-border bg-card text-foreground/60 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold">
-            <BookOpen size={13} className="text-accent" aria-hidden="true" />
+          <h1 className="font-serif text-ink mt-6 text-[clamp(2.75rem,8vw,5rem)] leading-[0.95] tracking-[-0.03em]">
             Documentation
-          </span>
-
-          <h1 className="mt-6 max-w-3xl text-4xl font-black tracking-tight md:text-6xl">
-            Everything Pastiche <span className="text-gradient">can do</span>.
           </h1>
 
-          <p className="text-foreground/50 mt-6 max-w-2xl text-lg leading-relaxed">
-            Install it in about a minute, learn nine keystrokes, and your clipboard stops
-            forgetting. Every command, path, and permission step below matches the shipping app.
+          <p className="text-ink-muted mt-6 max-w-[58ch] text-[17px] leading-[1.6]">
+            Install takes about a minute and the whole app is nine keystrokes. Every command, path,
+            and permission step below matches the shipping build — and every one of them is
+            click-to-copy.
           </p>
 
-          <div className="text-foreground/40 mt-8 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm font-medium">
-            <span>macOS 13 or later</span>
-            <span aria-hidden="true">·</span>
-            <span>Free &amp; open source (MIT)</span>
-            <span aria-hidden="true">·</span>
-            <span>Everything stays on your Mac</span>
-          </div>
-
-          <div className="mt-10 flex flex-col gap-3 sm:flex-row sm:items-center">
-            <a
-              href={RELEASES}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="bg-gradient glow focus-visible:ring-accent inline-flex items-center justify-center gap-2 rounded-xl px-7 py-3.5 font-bold text-white transition-transform hover:scale-[1.02] focus-visible:ring-2 focus-visible:outline-none"
-            >
-              <Download size={18} aria-hidden="true" />
-              Download for Mac
-            </a>
-            <a
-              href={REPO}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="border-border text-foreground/70 hover:text-foreground hover:border-foreground/30 focus-visible:ring-accent inline-flex items-center justify-center gap-2 rounded-xl border px-7 py-3.5 font-bold transition-colors focus-visible:ring-2 focus-visible:outline-none"
-            >
-              <Github size={18} aria-hidden="true" />
-              View on GitHub
-            </a>
+          <div className="mt-9 flex flex-wrap items-center gap-x-8 gap-y-5">
+            <DownloadButton />
+            <Link href={REPO}>View source</Link>
           </div>
         </div>
       </header>
 
-      {/* ---------------------------------------------------------------- */}
-      {/* Body                                                              */}
-      {/* ---------------------------------------------------------------- */}
+      {/* ------------------------------------------------------------------ */}
+      {/* Body                                                                */}
+      {/* ------------------------------------------------------------------ */}
       <div className="mx-auto max-w-6xl px-6 py-16 lg:py-24">
-        <div className="lg:grid lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-16">
+        <div className="lg:grid lg:grid-cols-[12rem_minmax(0,1fr)] lg:gap-16">
           {/* Sidebar — desktop */}
           <aside className="hidden lg:block">
-            <nav aria-label="On this page" className="sticky top-24">
-              <p className="text-foreground/35 px-3 text-xs font-bold tracking-[0.2em] uppercase">
-                On this page
-              </p>
+            <nav aria-label="On this page" className="sticky top-16">
+              <p className={`${LABEL} border-rule border-b pb-3`}>Contents</p>
               <div className="mt-4">
                 <NavList />
               </div>
-              <a
-                href={RELEASES}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="bg-card border-border hover:border-accent/50 focus-visible:ring-accent mt-8 flex items-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-semibold transition-colors focus-visible:ring-2 focus-visible:outline-none"
-              >
-                <Download size={14} className="text-accent shrink-0" aria-hidden="true" />
-                Download the DMG
-              </a>
             </nav>
           </aside>
 
           {/* Sidebar — mobile */}
-          <nav
-            aria-label="On this page"
-            className="bg-card border-border mb-14 rounded-2xl border p-4 lg:hidden"
-          >
-            <p className="text-foreground/35 px-3 pb-3 text-xs font-bold tracking-[0.2em] uppercase">
-              On this page
-            </p>
-            <NavList compact />
+          <nav aria-label="On this page" className="border-rule mb-16 border-y py-4 lg:hidden">
+            <p className={`${LABEL} pb-2`}>Contents</p>
+            <NavList layout="grid" />
           </nav>
 
           {/* Content */}
-          <div className="min-w-0 space-y-20 md:space-y-24">
-            {/* ============================ INSTALL ======================= */}
+          <div className="min-w-0 space-y-24 md:space-y-28">
+            {/* ========================= 01 · INSTALL ====================== */}
             <Section
+              n="01"
               id="install"
               label="Install"
-              title={
-                <>
-                  From download to <span className="text-gradient">first paste</span>
-                </>
-              }
+              title="From download to first paste"
               lede="Pastiche ships as a disk image on GitHub Releases. There is no installer, no account, and no license key — drag it in and press the hotkey."
             >
-              <ol className="space-y-4">
-                <Step number={1} title="Download the disk image">
+              <ol className="space-y-9">
+                <Step n="1" title="Download the disk image">
                   <p>
-                    Grab the latest <Code>Pastiche-&lt;version&gt;.dmg</Code> from{" "}
-                    <a
-                      href={RELEASES}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-accent hover:text-electric font-semibold transition-colors"
-                    >
-                      GitHub Releases
-                    </a>
-                    . Every release also carries a <Code>.zip</Code> of the same build — that one is
-                    what the auto-updater downloads.
+                    Grab the latest <Mono>Pastiche-&lt;version&gt;.dmg</Mono> from{" "}
+                    <Link href={RELEASES}>GitHub Releases</Link>. Every release also carries a{" "}
+                    <Mono>.zip</Mono> of the same build — that one is what the auto-updater
+                    downloads.
                   </p>
                 </Step>
-                <Step number={2} title="Drag Pastiche into Applications">
+                <Step n="2" title="Drag Pastiche into Applications">
                   <p>
-                    Open the DMG and drag <strong className="text-foreground/80">Pastiche</strong>{" "}
-                    onto the <strong className="text-foreground/80">Applications</strong> shortcut
+                    Open the DMG and drag <UI>Pastiche</UI> onto the <UI>Applications</UI> shortcut
                     inside the window. Then eject the disk image.
                   </p>
                 </Step>
-                <Step number={3} title="Launch it and press the hotkey">
+                <Step n="3" title="Launch it and press the hotkey">
                   <p>
-                    Pastiche is a menu-bar app — there is no Dock icon and no main window. A
-                    clipboard glyph appears in the menu bar; press{" "}
-                    <Keys keys={["⇧", "⌘", "V"]} /> and the shelf slides up from the bottom of
-                    whichever screen your mouse is on.
+                    Pastiche is a menu-bar app — no Dock icon, no main window. A clipboard glyph
+                    appears in the menu bar; press <Combo keys={["⇧", "⌘", "V"]} /> and the shelf
+                    slides up from the bottom of whichever screen your mouse is on.
                   </p>
                 </Step>
               </ol>
 
-              <Card icon={ShieldAlert} title="Gatekeeper on first launch">
+              <Block label="First launch" title="Gatekeeper">
                 <p>
                   Release builds are ad-hoc signed rather than Developer ID notarized, so macOS
                   refuses the first double-click with{" "}
-                  <em className="text-foreground/75 not-italic">
+                  <em className="text-ink not-italic">
                     “Pastiche cannot be opened because the developer cannot be verified.”
                   </em>{" "}
                   Do either of these once:
                 </p>
-                <ul className="list-disc space-y-2 pl-5 marker:text-accent/60">
+                <ul className="marker:text-accent/60 list-disc space-y-2 pl-5">
                   <li>
-                    Right-click (or Control-click){" "}
-                    <strong className="text-foreground/80">Pastiche.app</strong> →{" "}
-                    <strong className="text-foreground/80">Open</strong> →{" "}
-                    <strong className="text-foreground/80">Open</strong> in the dialog, or
+                    Right-click (or Control-click) <UI>Pastiche.app</UI> → <UI>Open</UI> →{" "}
+                    <UI>Open</UI> in the dialog, or
                   </li>
                   <li>
-                    open <strong className="text-foreground/80">System Settings</strong> →{" "}
-                    <strong className="text-foreground/80">Privacy &amp; Security</strong>, scroll
-                    to the message about Pastiche, and click{" "}
-                    <strong className="text-foreground/80">Open Anyway</strong>.
+                    open <UI>System Settings</UI> → <UI>Privacy &amp; Security</UI>, scroll to the
+                    message about Pastiche, and click <UI>Open Anyway</UI>.
                   </li>
                 </ul>
                 <p>You only need to do this once per installed version.</p>
-              </Card>
+              </Block>
 
-              <Card icon={Accessibility} title="Accessibility permission">
+              <Block label="Permission" title="Accessibility">
                 <p>
-                  Pastiche pastes by synthesizing a <Keys keys={["⌘", "V"]} /> keystroke into the
+                  Pastiche pastes by synthesizing a <Combo keys={["⌘", "V"]} /> keystroke into the
                   app you were last using, and macOS only lets trusted apps post keyboard events. On
                   first launch Pastiche asks for Accessibility access — approve it in{" "}
-                  <strong className="text-foreground/80">System Settings</strong> →{" "}
-                  <strong className="text-foreground/80">Privacy &amp; Security</strong> →{" "}
-                  <strong className="text-foreground/80">Accessibility</strong>.
+                  <UI>System Settings</UI> → <UI>Privacy &amp; Security</UI> → <UI>Accessibility</UI>
+                  .
                 </p>
                 <p>
                   Without it Pastiche still works: selecting a card copies it to the system
-                  clipboard, you just press <Keys keys={["⌘", "V"]} /> yourself. Nothing else in the
-                  app reads other applications’ contents.
+                  clipboard, you just press <Combo keys={["⌘", "V"]} /> yourself. Nothing else in
+                  the app reads other applications’ contents.
                 </p>
                 <Note>
                   Declined the prompt by accident? The request re-arms — flip Pastiche off and on in
                   the Accessibility list, or trigger a paste again, and direct paste recovers.
                 </Note>
-              </Card>
+              </Block>
             </Section>
 
-            {/* ============================ USING ========================= */}
+            {/* ========================== 02 · USING ======================= */}
             <Section
+              n="02"
               id="using"
               label="Using Pastiche"
-              title={
-                <>
-                  The shelf, <span className="text-gradient">end to end</span>
-                </>
-              }
+              title="The shelf, end to end"
               lede="Copy the way you always have. Pastiche records every clipping in the background and hands it back when you summon the shelf."
             >
-              <div className="grid gap-5 md:grid-cols-2">
-                <Card icon={Zap} title="Open the shelf">
-                  <p>
-                    Press <Keys keys={["⇧", "⌘", "V"]} /> from any app, or choose{" "}
-                    <strong className="text-foreground/80">Open Pastiche</strong> from the menu-bar
-                    icon. The panel appears on the screen holding the mouse and closes again with
-                    the same hotkey, <Keys keys={["Esc"]} />, or by switching apps.
-                  </p>
-                </Card>
+              <Block label="2.1" title="Open the shelf">
+                <p>
+                  Press <Combo keys={["⇧", "⌘", "V"]} /> from any app, or choose{" "}
+                  <UI>Open Pastiche</UI> from the menu-bar icon. The panel appears on the screen
+                  holding the mouse and closes again with the same hotkey,{" "}
+                  <Combo keys={["Esc"]} />, or by switching apps.
+                </p>
+              </Block>
 
-                <Card icon={Keyboard} title="Pick and paste">
-                  <p>
-                    Move with <Keys keys={["←"]} /> <Keys keys={["→"]} />, then{" "}
-                    <Keys keys={["Return"]} /> to paste into the app you came from.{" "}
-                    <Keys keys={["⇧", "Return"]} /> pastes as plain text, and{" "}
-                    <Keys keys={["⌘", "1"]} />–<Keys keys={["⌘", "9"]} /> fire the numbered cards
-                    without moving the selection.
-                  </p>
-                  <p>
-                    Right-click any card for{" "}
-                    <strong className="text-foreground/80">Paste</strong>,{" "}
-                    <strong className="text-foreground/80">Paste as Plain Text</strong>,{" "}
-                    <strong className="text-foreground/80">Copy</strong>,{" "}
-                    <strong className="text-foreground/80">Add to Pinboard</strong>, and{" "}
-                    <strong className="text-foreground/80">Delete</strong>.
-                  </p>
-                </Card>
+              <Block label="2.2" title="Pick and paste">
+                <p>
+                  Move with <Combo keys={["←"]} /> <Combo keys={["→"]} />, then{" "}
+                  <Combo keys={["Return"]} /> to paste into the app you came from.{" "}
+                  <Combo keys={["⇧", "Return"]} /> pastes as plain text, and{" "}
+                  <Combo keys={["⌘", "1"]} />–<Combo keys={["⌘", "9"]} /> fire the numbered cards
+                  without moving the selection.
+                </p>
+                <p>
+                  Right-click any card for <UI>Paste</UI>, <UI>Paste as Plain Text</UI>,{" "}
+                  <UI>Copy</UI>, <UI>Add to Pinboard</UI>, and <UI>Delete</UI>.
+                </p>
+              </Block>
 
-                <Card icon={Pin} title="Pinboards">
-                  <p>
-                    The tabs across the top of the shelf are{" "}
-                    <strong className="text-foreground/80">Clipboard</strong> plus your pinboards —
-                    named, color-coded boards for the snippets you reuse. Hit{" "}
-                    <strong className="text-foreground/80">+</strong> to create one, then drag a
-                    card onto a tab, or use{" "}
-                    <strong className="text-foreground/80">Add to Pinboard</strong>.
-                  </p>
-                  <p>
-                    Adding an item to a board saves a copy, so your history is untouched. Right-click
-                    a tab to rename, recolor, or delete it — deleting a board removes only the
-                    copies saved on it.
-                  </p>
-                </Card>
+              <Block label="2.3" title="Pinboards">
+                <p>
+                  The tabs across the top of the shelf are <UI>Clipboard</UI> plus your pinboards —
+                  named, color-coded boards for the snippets you reuse. Hit <UI>+</UI> to create
+                  one, then drag a card onto a tab, or use <UI>Add to Pinboard</UI>.
+                </p>
+                <p>
+                  Adding an item to a board saves a copy, so your history is untouched. Right-click
+                  a tab to rename, recolor, or delete it — deleting a board removes only the copies
+                  saved on it.
+                </p>
+              </Block>
 
-                <Card icon={Eye} title="Previews">
-                  <p>
-                    Press <Keys keys={["Space"]} /> to toggle the large preview of the selected card:
-                    full text, images fitted to the panel, openable links, file lists, and color
-                    swatches. <Keys keys={["Space"]} /> or <Keys keys={["Esc"]} /> closes it again.
-                  </p>
-                </Card>
+              <Block label="2.4" title="Previews">
+                <p>
+                  Press <Combo keys={["Space"]} /> to toggle the large preview of the selected card:
+                  full text, images fitted to the panel, openable links, file lists, and color
+                  swatches. <Combo keys={["Space"]} /> or <Combo keys={["Esc"]} /> closes it again.
+                </p>
+              </Block>
 
-                <Card icon={Move} title="Drag and drop">
-                  <p>
-                    Drag any card straight out of the shelf and into another app — a document, a
-                    Finder window, a chat box. Files and images carry their real contents, not just
-                    a text stand-in.
-                  </p>
-                </Card>
+              <Block label="2.5" title="Drag and drop">
+                <p>
+                  Drag any card straight out of the shelf and into another app — a document, a
+                  Finder window, a chat box. Files and images carry their real contents, not just a
+                  text stand-in.
+                </p>
+              </Block>
 
-                <Card icon={Pause} title="Pause capture">
-                  <p>
-                    Choose{" "}
-                    <strong className="text-foreground/80">Pause Clipboard History</strong> from the
-                    menu-bar icon to stop recording entirely until you turn it back on — useful when
-                    you are about to move something you would rather not keep.
-                  </p>
-                </Card>
-              </div>
+              <Block label="2.6" title="Pause capture">
+                <p>
+                  Choose <UI>Pause Clipboard History</UI> from the menu-bar icon to stop recording
+                  entirely until you turn it back on — useful when you are about to move something
+                  you would rather not keep.
+                </p>
+              </Block>
 
-              <Card icon={Layers} title="What Pastiche captures">
+              <Block label="2.7" title="What Pastiche captures">
                 <p>
                   Each kind of clipping gets its own card layout, a source-app badge, and a relative
                   timestamp. Rich text keeps its RTF and HTML styling; images are stored as PNGs
                   with thumbnails alongside.
                 </p>
-                <ul className="flex flex-wrap gap-2 pt-1">
+                <ul className="flex flex-wrap gap-x-6 gap-y-2 pt-1">
                   {CAPTURED.map((kind) => (
-                    <li
-                      key={kind}
-                      className="border-border bg-darker text-foreground/70 rounded-lg border px-2.5 py-1 text-xs font-semibold"
-                    >
+                    <li key={kind} className={LABEL}>
                       {kind}
                     </li>
                   ))}
                 </ul>
-              </Card>
+              </Block>
 
               {/* Keyboard reference */}
-              <div className="pt-4">
-                <h3 className="text-xl font-black tracking-tight">Keyboard reference</h3>
-                <p className="text-foreground/50 mt-2 text-[15px] leading-relaxed">
-                  Everything below works while the shelf is open, except the global toggle.
+              <div className="border-rule border-t pt-6">
+                <p className={LABEL}>2.8 — Keyboard reference</p>
+                <h3 className="font-serif text-ink mt-3 text-[1.45rem] leading-snug tracking-[-0.015em]">
+                  Nine keystrokes, whole app
+                </h3>
+                <p className="text-ink-muted mt-3 max-w-[58ch] text-[16px] leading-[1.65]">
+                  Everything below works while the shelf is open, except the global toggle. Click
+                  any combination to copy it.
                 </p>
-                <div className="border-border bg-card mt-5 overflow-hidden rounded-2xl border">
-                  <div className="overflow-x-auto">
-                    <table className="w-full min-w-[26rem] text-left text-sm">
-                      <caption className="sr-only">Pastiche keyboard shortcuts</caption>
-                      <thead>
-                        <tr className="border-border bg-darker border-b">
-                          <th
-                            scope="col"
-                            className="text-foreground/40 px-5 py-3 text-xs font-bold tracking-[0.15em] uppercase"
-                          >
-                            Shortcut
-                          </th>
-                          <th
-                            scope="col"
-                            className="text-foreground/40 px-5 py-3 text-xs font-bold tracking-[0.15em] uppercase"
-                          >
-                            Action
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {SHORTCUTS.map((row) => (
-                          <tr
-                            key={row.action}
-                            className="border-border/70 border-b last:border-b-0"
-                          >
-                            <td className="px-5 py-3.5 align-middle whitespace-nowrap">
-                              <Chords chords={row.chords} separator={row.separator} />
-                            </td>
-                            <td className="text-foreground/60 px-5 py-3.5 align-middle leading-relaxed">
-                              {row.action}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            </Section>
 
-            {/* ========================= POWER SEARCH ===================== */}
-            <Section
-              id="power-search"
-              label="Power search"
-              title={
-                <>
-                  Find it <span className="text-gradient">faster than you copied it</span>
-                </>
-              }
-              lede="Start typing with the shelf open — the search field takes focus automatically. Bare words fuzzy-match item text, URLs, hex codes, file names, and the app a clipping came from, ranked best-first."
-            >
-              <div className="border-border bg-card overflow-hidden rounded-2xl border">
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[26rem] text-left text-sm">
-                    <caption className="sr-only">Power search filter tokens</caption>
+                <div className="mt-6 overflow-x-auto">
+                  <table className="w-full min-w-[26rem] border-collapse text-left">
+                    <caption className="sr-only">Pastiche keyboard shortcuts</caption>
                     <thead>
-                      <tr className="border-border bg-darker border-b">
-                        <th
-                          scope="col"
-                          className="text-foreground/40 px-5 py-3 text-xs font-bold tracking-[0.15em] uppercase"
-                        >
-                          Token
+                      <tr className="border-rule border-b">
+                        <th scope="col" className={`${LABEL} py-2.5 pr-6 font-normal`}>
+                          Shortcut
                         </th>
-                        <th
-                          scope="col"
-                          className="text-foreground/40 px-5 py-3 text-xs font-bold tracking-[0.15em] uppercase"
-                        >
-                          Matches
+                        <th scope="col" className={`${LABEL} py-2.5 font-normal`}>
+                          Action
                         </th>
                       </tr>
                     </thead>
                     <tbody>
-                      {SEARCH_TOKENS.map((row) => (
-                        <tr key={row.token} className="border-border/70 border-b last:border-b-0">
-                          <td className="px-5 py-3.5 align-middle whitespace-nowrap">
-                            <span className="text-accent font-mono text-[13px] font-semibold">
-                              {row.token}
-                            </span>
-                          </td>
-                          <td className="text-foreground/60 px-5 py-3.5 align-middle leading-relaxed">
-                            {row.matches}
+                      {SHORTCUTS.map((row) => (
+                        <tr key={row.action} className="border-rule/70 border-b last:border-b-0">
+                          <th
+                            scope="row"
+                            className="py-3.5 pr-6 align-baseline font-normal whitespace-nowrap"
+                          >
+                            <Combos keys={row.keys} separator={row.separator} />
+                          </th>
+                          <td className="text-ink-muted py-3.5 align-baseline text-[15px] leading-[1.6]">
+                            {row.action}
                           </td>
                         </tr>
                       ))}
@@ -629,366 +538,339 @@ export default function DocsPage() {
                   </table>
                 </div>
               </div>
+            </Section>
 
-              <p className="text-foreground/60 text-[15px] leading-relaxed">
-                Tokens combine with each other and with free text:
-              </p>
+            {/* ======================= 03 · POWER SEARCH =================== */}
+            <Section
+              n="03"
+              id="power-search"
+              label="Power search"
+              title="Two filter tokens and fuzzy text"
+              lede="Start typing with the shelf open — the search field takes focus automatically. Bare words fuzzy-match item text, URLs, hex codes, file names, and the app a clipping came from, ranked best-first."
+            >
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[26rem] border-collapse text-left">
+                  <caption className="sr-only">Power search filter tokens</caption>
+                  <thead>
+                    <tr className="border-rule border-b">
+                      <th scope="col" className={`${LABEL} py-2.5 pr-6 font-normal`}>
+                        Token
+                      </th>
+                      <th scope="col" className={`${LABEL} py-2.5 font-normal`}>
+                        Matches
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {SEARCH_TOKENS.map((row) => (
+                      <tr key={row.token} className="border-rule/70 border-b last:border-b-0">
+                        <th
+                          scope="row"
+                          className="py-3.5 pr-6 align-baseline font-normal whitespace-nowrap"
+                        >
+                          <CopyChip text={row.token} kind="command" />
+                        </th>
+                        <td className="text-ink-muted py-3.5 align-baseline text-[15px] leading-[1.6]">
+                          {row.matches}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
 
-              <CodeBlock
-                label="Search examples"
-                code={`type:link github          links mentioning "github"
-app:xcode type:text       text copied out of Xcode
-app:com.apple.Safari      everything grabbed from Safari
-#ff                       colors (and anything else) containing "#ff"`}
-              />
+              <div className="border-rule border-t pt-6">
+                <p className={LABEL}>3.1 — Combining</p>
+                <h3 className="font-serif text-ink mt-3 text-[1.45rem] leading-snug tracking-[-0.015em]">
+                  Tokens stack with each other and with free text
+                </h3>
+                <ul className="mt-5 space-y-4">
+                  {SEARCH_EXAMPLES.map((example) => (
+                    <li
+                      key={example.query}
+                      className="flex flex-col gap-2 sm:flex-row sm:items-baseline sm:gap-5"
+                    >
+                      <span className="shrink-0">
+                        <CopyChip text={example.query} kind="command" />
+                      </span>
+                      <span className="text-ink-muted text-[15px] leading-[1.6]">
+                        {example.means}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
 
               <Note>
-                Fuzzy matching is forgiving about typos — searching{" "}
-                <Code>wrld</Code> still surfaces the clipping containing “world”. Press{" "}
-                <Keys keys={["⌘", "F"]} /> to jump back to the field, and{" "}
-                <Keys keys={["Esc"]} /> to clear it.
+                Fuzzy matching is forgiving about typos — searching <Mono>wrld</Mono> still surfaces
+                the clipping containing “world”. Press <Combo keys={["⌘", "F"]} /> to jump back to
+                the field, and <Combo keys={["Esc"]} /> to clear it.
               </Note>
             </Section>
 
-            {/* =========================== SETTINGS ======================= */}
+            {/* ========================= 04 · SETTINGS ===================== */}
             <Section
+              n="04"
               id="settings"
               label="Settings"
-              title={
-                <>
-                  Four tabs, <span className="text-gradient">no surprises</span>
-                </>
-              }
-              lede="Open Settings… from the menu-bar icon in the top-right of the screen. Every preference is stored locally, alongside your history."
+              title="Four tabs, stored locally"
+              lede="Open Settings… from the menu-bar icon in the top-right of the screen. Every preference is stored on this Mac, alongside your history."
             >
-              <div className="grid gap-5 md:grid-cols-2">
-                <Card icon={Settings} title="General">
-                  <ul className="list-disc space-y-2 pl-5 marker:text-accent/60">
-                    <li>
-                      <strong className="text-foreground/80">Launch Pastiche at login</strong> —
-                      backed by <Code>SMAppService</Code>; the toggle verifies the real system state
-                      and reverts if registration fails.
-                    </li>
-                    <li>
-                      <strong className="text-foreground/80">Global shortcut</strong> — record a new
-                      combination for the shelf. It needs at least one of{" "}
-                      <Keys keys={["⌘"]} /> <Keys keys={["⌃"]} /> <Keys keys={["⌥"]} />; a
-                      combination the system rejects reverts to the previous one.
-                    </li>
-                    <li>
-                      <strong className="text-foreground/80">Keep history</strong> — Unlimited (the
-                      default), or cap at 100 / 500 / 1,000 / 5,000 items. Lowering the cap prunes
-                      immediately.
-                    </li>
-                    <li>
-                      <strong className="text-foreground/80">Paste as plain text by default</strong>{" "}
-                      — flips the meaning of <Keys keys={["Return"]} /> and{" "}
-                      <Keys keys={["⇧", "Return"]} />.
-                    </li>
-                    <li>
-                      <strong className="text-foreground/80">Panel height</strong> — 280 pt to 520
-                      pt.
-                    </li>
-                  </ul>
-                </Card>
+              <Block label="4.1" title="General">
+                <ul className="marker:text-accent/60 list-disc space-y-2 pl-5">
+                  <li>
+                    <UI>Launch Pastiche at login</UI> — backed by <Mono>SMAppService</Mono>; the
+                    toggle verifies the real system state and reverts if registration fails.
+                  </li>
+                  <li>
+                    <UI>Global shortcut</UI> — record a new combination for the shelf. It needs at
+                    least one of <Combo keys={["⌘"]} /> <Combo keys={["⌃"]} /> <Combo keys={["⌥"]} />
+                    ; a combination the system rejects reverts to the previous one.
+                  </li>
+                  <li>
+                    <UI>Keep history</UI> — Unlimited (the default), or cap at 100 / 500 / 1,000 /
+                    5,000 items. Lowering the cap prunes immediately.
+                  </li>
+                  <li>
+                    <UI>Paste as plain text by default</UI> — flips the meaning of{" "}
+                    <Combo keys={["Return"]} /> and <Combo keys={["⇧", "Return"]} />.
+                  </li>
+                  <li>
+                    <UI>Panel height</UI> — 280 pt to 520 pt.
+                  </li>
+                </ul>
+              </Block>
 
-                <Card icon={ShieldAlert} title="Privacy">
-                  <ul className="list-disc space-y-2 pl-5 marker:text-accent/60">
-                    <li>
-                      <strong className="text-foreground/80">
-                        Ignore concealed and transient clipboard content
-                      </strong>{" "}
-                      — on by default. Password managers mark their copies as concealed, and
-                      Pastiche never records them.
-                    </li>
-                    <li>
-                      <strong className="text-foreground/80">Ignored Apps</strong> — anything copied
-                      while one of these apps is frontmost is skipped entirely.
-                    </li>
-                    <li>
-                      <strong className="text-foreground/80">Clear History</strong> — removes every
-                      item from the Clipboard tab and scrubs the content from the database file on
-                      disk. Pinboards are left untouched.
-                    </li>
-                  </ul>
-                </Card>
+              <Block label="4.2" title="Privacy">
+                <ul className="marker:text-accent/60 list-disc space-y-2 pl-5">
+                  <li>
+                    <UI>Ignore concealed and transient clipboard content</UI> — on by default.
+                    Password managers mark their copies as concealed, and Pastiche never records
+                    them.
+                  </li>
+                  <li>
+                    <UI>Ignored Apps</UI> — anything copied while one of these apps is frontmost is
+                    skipped entirely.
+                  </li>
+                  <li>
+                    <UI>Clear History</UI> — removes every item from the Clipboard tab and scrubs
+                    the content from the database file on disk. Pinboards are left untouched.
+                  </li>
+                </ul>
+              </Block>
 
-                <Card icon={RefreshCw} title="Updates">
-                  <p>
-                    <strong className="text-foreground/80">Automatically check for updates</strong>{" "}
-                    reflects Sparkle’s real setting, and{" "}
-                    <strong className="text-foreground/80">Check Now</strong> runs a check on
-                    demand. The current version is listed underneath.
-                  </p>
-                </Card>
-
-                <Card icon={Info} title="About">
-                  <p>
-                    Version, license, and links back to the repository — plus the only promise the
-                    app makes: everything you copy stays on this Mac.
-                  </p>
-                </Card>
-              </div>
-
-              <Card icon={Layers} title="Where your data lives">
+              <Block label="4.3" title="Updates">
                 <p>
-                  Clippings live only on your Mac, in{" "}
-                  <Code>~/Library/Application Support/Pastiche</Code> —{" "}
-                  <Code>pastiche.sqlite3</Code> plus an <Code>Images/</Code> folder. Nothing is
-                  uploaded anywhere, and deleting an item deletes its row and any image files it
-                  owned.
+                  <UI>Automatically check for updates</UI> reflects Sparkle’s real setting, and{" "}
+                  <UI>Check Now</UI> runs a check on demand. The current version is listed
+                  underneath.
+                </p>
+              </Block>
+
+              <Block label="4.4" title="About">
+                <p>
+                  Version, license, and links back to the repository — plus the only promise the app
+                  makes: everything you copy stays on this Mac.
+                </p>
+              </Block>
+
+              <Block label="4.5" title="Where your data lives">
+                <p>Clippings live only on your Mac, in this folder:</p>
+                <div className="overflow-x-auto py-1">
+                  <CopyChip text="~/Library/Application Support/Pastiche" kind="file" />
+                </div>
+                <p>
+                  Inside it: <Mono>pastiche.sqlite3</Mono> plus an <Mono>Images/</Mono> folder.
+                  Nothing is uploaded anywhere, and deleting an item deletes its row and any image
+                  files it owned.
                 </p>
                 <p>
-                  The only network request Pastiche makes is fetching <Code>appcast.xml</Code> to
+                  The only network request Pastiche makes is fetching <Mono>appcast.xml</Mono> to
                   check for updates.
                 </p>
-              </Card>
+              </Block>
             </Section>
 
-            {/* =========================== UPDATES ======================== */}
+            {/* ========================= 05 · UPDATES ====================== */}
             <Section
+              n="05"
               id="updates"
               label="Updates"
-              title={
-                <>
-                  Signed updates, <span className="text-gradient">straight from the repo</span>
-                </>
-              }
+              title="Signed updates, straight from the repo"
               lede="Pastiche ships with Sparkle 2. Each release is a .zip of the app signed with an EdDSA (Ed25519) key that never leaves the maintainer’s machine; the matching public key is baked into the app’s Info.plist."
             >
-              <div className="grid gap-5 md:grid-cols-2">
-                <Card icon={RefreshCw} title="How a check works">
-                  <p>
-                    The app fetches <Code>appcast.xml</Code> from the repository in the background,
-                    verifies the signature on the archive, and installs the update on relaunch. The
-                    feed is the same file you can read on GitHub — nothing is served from a private
-                    endpoint.
-                  </p>
-                </Card>
+              <Block label="5.1" title="How a check works">
+                <p>
+                  The app fetches <Mono>appcast.xml</Mono> from the repository in the background,
+                  verifies the signature on the archive, and installs the update on relaunch. The
+                  feed is the same file you can <Link href={APPCAST}>read on GitHub</Link> — nothing
+                  is served from a private endpoint.
+                </p>
+              </Block>
 
-                <Card icon={Download} title="Checking manually">
-                  <p>
-                    Choose <strong className="text-foreground/80">Check for Updates…</strong> from
-                    the menu-bar icon, or open{" "}
-                    <strong className="text-foreground/80">Settings → Updates</strong> and press{" "}
-                    <strong className="text-foreground/80">Check Now</strong>. Automatic checks can
-                    be turned off in the same place.
-                  </p>
-                </Card>
-              </div>
+              <Block label="5.2" title="Checking manually">
+                <p>
+                  Choose <UI>Check for Updates…</UI> from the menu-bar icon, or open{" "}
+                  <UI>Settings → Updates</UI> and press <UI>Check Now</UI>. Automatic checks can be
+                  turned off in the same place.
+                </p>
+                <Note>
+                  Updates are only available in the packaged <Mono>Pastiche.app</Mono>. A binary run
+                  with <Mono>swift run</Mono> has no bundle identifier, so Sparkle and
+                  launch-at-login are both disabled there.
+                </Note>
+              </Block>
 
-              <Note>
-                Updates are only available in the packaged <Code>Pastiche.app</Code>. A binary run
-                with <Code>swift run</Code> has no bundle identifier, so Sparkle and launch-at-login
-                are both disabled there.
-              </Note>
-
-              <p className="text-foreground/60 text-[15px] leading-relaxed">
-                Every release is written up in the{" "}
-                <a
-                  href={CHANGELOG}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-accent hover:text-electric inline-flex items-center gap-1 font-semibold transition-colors"
-                >
-                  changelog
-                  <ArrowUpRight size={14} aria-hidden="true" />
-                </a>
-                .
+              <p className="text-ink-muted text-[16px] leading-[1.65]">
+                Every release is written up in the <Link href={CHANGELOG}>changelog</Link>.
               </p>
             </Section>
 
-            {/* ============================ BUILD ========================= */}
+            {/* ========================== 06 · BUILD ======================= */}
             <Section
+              n="06"
               id="build"
               label="Building from source"
-              title={
-                <>
-                  A plain <span className="text-gradient">SwiftPM package</span>
-                </>
-              }
-              lede="Requirements: macOS 13 or later and the Xcode Command Line Tools (xcode-select --install). A full Xcode install is not needed."
+              title="A plain SwiftPM package"
+              lede="Requirements: macOS 13 or later and the Xcode Command Line Tools. A full Xcode install is not needed."
             >
-              <CodeBlock
-                label="Clone and build"
-                code={`git clone https://github.com/Prestongramberg/Pastiche.git
-cd Pastiche
-
-# Debug build / run straight out of the package
-swift build
-
-# Build the real, signed .app bundle (icon, Info.plist, Sparkle framework)
-bash Scripts/build_app.sh            # add --universal for arm64 + x86_64`}
+              <CommandBlock
+                label="Prerequisite"
+                lines={[{ command: "xcode-select --install" }]}
               />
 
-              <Card icon={Hammer} title="What you get">
+              <CommandBlock
+                label="Clone and build"
+                lines={[
+                  { command: "git clone https://github.com/Prestongramberg/Pastiche.git" },
+                  { command: "cd Pastiche" },
+                  {
+                    comment: "Debug build / run straight out of the package",
+                    command: "swift build",
+                  },
+                  {
+                    comment:
+                      "Build the real, signed .app bundle (icon, Info.plist, Sparkle framework)",
+                    command: "bash Scripts/build_app.sh",
+                  },
+                  {
+                    comment: "Same script, arm64 + x86_64",
+                    command: "bash Scripts/build_app.sh --universal",
+                  },
+                ]}
+              />
+
+              <Block label="6.1" title="What you get">
                 <p>
-                  The finished bundle lands at <Code>dist/Pastiche.app</Code>. Drag it to{" "}
-                  <Code>/Applications</Code> and launch it as usual — the same Gatekeeper step
+                  The finished bundle lands at <Mono>dist/Pastiche.app</Mono>. Drag it to{" "}
+                  <Mono>/Applications</Mono> and launch it as usual — the same Gatekeeper step
                   applies the first time.
                 </p>
                 <p>
-                  Running the binary directly with <Code>swift run</Code> works for quick iteration,
+                  Running the binary directly with <Mono>swift run</Mono> works for quick iteration,
                   but there is no bundle identifier in that mode, so updates and launch-at-login are
                   disabled.
                 </p>
-              </Card>
+              </Block>
 
-              <Note>
-                Packaging a disk image of your own build is one more command:{" "}
-                <Code>bash Scripts/make_dmg.sh &lt;version&gt;</Code>, which writes{" "}
-                <Code>dist/Pastiche-&lt;version&gt;.dmg</Code>.
-              </Note>
+              <Block label="6.2" title="Packaging your own disk image">
+                <p>
+                  One more command writes <Mono>dist/Pastiche-&lt;version&gt;.dmg</Mono>:
+                </p>
+                <div className="overflow-x-auto py-1">
+                  <CopyChip text="bash Scripts/make_dmg.sh <version>" kind="command" />
+                </div>
+              </Block>
             </Section>
 
-            {/* =========================== UNINSTALL ====================== */}
+            {/* ======================== 07 · UNINSTALL ===================== */}
             <Section
+              n="07"
               id="uninstall"
               label="Uninstall"
-              title={
-                <>
-                  Two paths, <span className="text-gradient">both complete</span>
-                </>
-              }
+              title="Two paths, both complete"
               lede="Pastiche installs nothing outside the app bundle and its own support folder — no daemons, no kernel extensions, no receipts."
             >
-              <ol className="space-y-4">
-                <Step number={1} title="Quit the app">
+              <ol className="space-y-9">
+                <Step n="1" title="Quit the app">
                   <p>
-                    Click the menu-bar icon and choose{" "}
-                    <strong className="text-foreground/80">Quit Pastiche</strong> (
-                    <Keys keys={["⌘", "Q"]} />
-                    ). If you had launch-at-login on, turn it off in{" "}
-                    <strong className="text-foreground/80">Settings → General</strong> before
-                    quitting so the login-item registration is cleaned up.
+                    Click the menu-bar icon and choose <UI>Quit Pastiche</UI> (
+                    <Combo keys={["⌘", "Q"]} />
+                    ). If you had launch-at-login on, turn it off in <UI>Settings → General</UI>{" "}
+                    before quitting so the login-item registration is cleaned up.
                   </p>
                 </Step>
-                <Step number={2} title="Remove the app, and optionally the data">
+                <Step n="2" title="Remove the app, and optionally the data">
                   <p>
-                    Deleting <Code>Pastiche.app</Code> alone leaves your history and pinboards in
+                    Deleting <Mono>Pastiche.app</Mono> alone leaves your history and pinboards in
                     place, so reinstalling picks up where you left off. Delete the support folder
                     too for a clean slate.
                   </p>
                 </Step>
               </ol>
 
-              <CodeBlock
+              <CommandBlock
                 label="Terminal"
-                code={`# Remove the app
-rm -rf /Applications/Pastiche.app
-
-# Remove clipboard history, pinboards, and cached images
-rm -rf "$HOME/Library/Application Support/Pastiche"
-
-# Optional: forget the app's preferences
-defaults delete com.prestongramberg.pastiche`}
+                lines={[
+                  { comment: "Remove the app", command: "rm -rf /Applications/Pastiche.app" },
+                  {
+                    comment: "Remove clipboard history, pinboards, and cached images",
+                    command: 'rm -rf "$HOME/Library/Application Support/Pastiche"',
+                  },
+                  {
+                    comment: "Optional: forget the app's preferences",
+                    command: "defaults delete com.prestongramberg.pastiche",
+                  },
+                ]}
               />
 
               <Note>
-                The second command is permanent — it deletes <Code>pastiche.sqlite3</Code> and the{" "}
-                <Code>Images/</Code> folder with it. Finally, remove the stale entry under{" "}
-                <strong className="text-foreground/80">
-                  System Settings → Privacy &amp; Security → Accessibility
-                </strong>{" "}
-                by selecting Pastiche and clicking the minus button.
+                The second command is permanent — it deletes <Mono>pastiche.sqlite3</Mono> and the{" "}
+                <Mono>Images/</Mono> folder with it. Finally, remove the stale entry under{" "}
+                <UI>System Settings → Privacy &amp; Security → Accessibility</UI> by selecting
+                Pastiche and clicking the minus button.
               </Note>
             </Section>
 
-            {/* ============================= HELP ========================= */}
+            {/* ========================== 08 · HELP ======================== */}
             <Section
+              n="08"
               id="help"
               label="Get help"
-              title={
-                <>
-                  Something <span className="text-gradient">off</span>?
-                </>
-              }
+              title="Something off?"
               lede="Pastiche is a one-person open-source project. Bug reports with the macOS version and a short repro are genuinely useful."
             >
-              <div className="grid gap-5 md:grid-cols-3">
-                <a
-                  href={ISSUES}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="bg-card border-border hover:border-accent/50 focus-visible:ring-accent group rounded-2xl border p-6 transition-colors focus-visible:ring-2 focus-visible:outline-none"
-                >
-                  <MessageCircle size={20} className="text-accent" aria-hidden="true" />
-                  <h3 className="mt-4 flex items-center gap-1 text-base font-bold tracking-tight">
-                    Report an issue
-                    <ArrowUpRight
-                      size={15}
-                      className="text-foreground/30 group-hover:text-accent transition-colors"
-                      aria-hidden="true"
-                    />
-                  </h3>
-                  <p className="text-foreground/60 mt-2 text-[15px] leading-relaxed">
-                    Open a ticket on GitHub — bugs, rough edges, and feature ideas all land in the
-                    same place.
-                  </p>
-                </a>
+              <dl className="border-rule border-t">
+                <div className="border-rule grid gap-x-8 gap-y-2 border-b py-6 md:grid-cols-[9rem_minmax(0,1fr)]">
+                  <dt className={`${LABEL} md:pt-1`}>Issues</dt>
+                  <dd className="text-ink-muted text-[16px] leading-[1.65]">
+                    <Link href={ISSUES}>Open a ticket on GitHub</Link> — bugs, rough edges, and
+                    feature ideas all land in the same place.
+                  </dd>
+                </div>
+                <div className="border-rule grid gap-x-8 gap-y-2 border-b py-6 md:grid-cols-[9rem_minmax(0,1fr)]">
+                  <dt className={`${LABEL} md:pt-1`}>Source</dt>
+                  <dd className="text-ink-muted text-[16px] leading-[1.65]">
+                    <Link href={REPO}>Read the source</Link> — MIT licensed, Swift, no dependencies
+                    beyond Sparkle. Pull requests welcome.
+                  </dd>
+                </div>
+                <div className="border-rule grid gap-x-8 gap-y-2 border-b py-6 md:grid-cols-[9rem_minmax(0,1fr)]">
+                  <dt className={`${LABEL} md:pt-1`}>Changelog</dt>
+                  <dd className="text-ink-muted text-[16px] leading-[1.65]">
+                    <Link href={CHANGELOG}>What changed in each release</Link>, written for humans
+                    rather than commit logs.
+                  </dd>
+                </div>
+              </dl>
 
-                <a
-                  href={REPO}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="bg-card border-border hover:border-accent/50 focus-visible:ring-accent group rounded-2xl border p-6 transition-colors focus-visible:ring-2 focus-visible:outline-none"
-                >
-                  <Github size={20} className="text-accent" aria-hidden="true" />
-                  <h3 className="mt-4 flex items-center gap-1 text-base font-bold tracking-tight">
-                    Read the source
-                    <ArrowUpRight
-                      size={15}
-                      className="text-foreground/30 group-hover:text-accent transition-colors"
-                      aria-hidden="true"
-                    />
-                  </h3>
-                  <p className="text-foreground/60 mt-2 text-[15px] leading-relaxed">
-                    MIT licensed, Swift, no dependencies beyond Sparkle. Pull requests welcome.
-                  </p>
-                </a>
-
-                <a
-                  href={CHANGELOG}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="bg-card border-border hover:border-accent/50 focus-visible:ring-accent group rounded-2xl border p-6 transition-colors focus-visible:ring-2 focus-visible:outline-none"
-                >
-                  <RefreshCw size={20} className="text-accent" aria-hidden="true" />
-                  <h3 className="mt-4 flex items-center gap-1 text-base font-bold tracking-tight">
-                    Changelog
-                    <ArrowUpRight
-                      size={15}
-                      className="text-foreground/30 group-hover:text-accent transition-colors"
-                      aria-hidden="true"
-                    />
-                  </h3>
-                  <p className="text-foreground/60 mt-2 text-[15px] leading-relaxed">
-                    What changed in each release, written for humans rather than commit logs.
-                  </p>
-                </a>
-              </div>
-
-              <div className="border-border bg-card relative mt-6 overflow-hidden rounded-2xl border p-8 text-center md:p-10">
-                <div
-                  aria-hidden="true"
-                  className="bg-accent/10 pointer-events-none absolute -top-24 left-1/2 h-56 w-56 -translate-x-1/2 rounded-full blur-[100px]"
-                />
-                <div className="relative">
-                  <h3 className="text-2xl font-black tracking-tight md:text-3xl">
-                    Ready to stop losing what you copied?
-                  </h3>
-                  <p className="text-foreground/50 mx-auto mt-3 max-w-md leading-relaxed">
-                    Free, open source, and entirely local. macOS 13 or later.
-                  </p>
-                  <a
-                    href={RELEASES}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="bg-gradient glow focus-visible:ring-accent mt-7 inline-flex items-center justify-center gap-2 rounded-xl px-7 py-3.5 font-bold text-white transition-transform hover:scale-[1.02] focus-visible:ring-2 focus-visible:outline-none"
-                  >
-                    <Download size={18} aria-hidden="true" />
-                    Download for Mac
-                  </a>
+              <div className="pt-2">
+                <p className="text-ink font-serif max-w-[30ch] text-[clamp(1.6rem,3.5vw,2.25rem)] leading-[1.1] tracking-[-0.02em]">
+                  Free, open source, and entirely local. macOS 13 or later.
+                </p>
+                <div className="mt-8 flex flex-wrap items-center gap-x-8 gap-y-5">
+                  <DownloadButton />
+                  <Link href={RELEASES}>All releases</Link>
                 </div>
               </div>
             </Section>
